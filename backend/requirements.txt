@@ -1,0 +1,8 @@
+FastAPI
+uvicorn
+firebase-admin
+opencv-python
+numpy
+python-dotenv
+pydantic
+requests
