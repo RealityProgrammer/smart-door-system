@@ -45,12 +45,14 @@ smart-door-system
 ## Setup Instructions
 
 1. **Clone the repository**:
+
    ```
    git clone <repository-url>
    cd smart-door-system
    ```
 
 2. **Backend Setup**:
+
    - Navigate to the `backend` directory.
    - Install dependencies:
      ```
@@ -63,6 +65,7 @@ smart-door-system
      ```
 
 3. **Frontend Setup**:
+
    - Navigate to the `frontend` directory.
    - Install dependencies:
      ```
@@ -86,6 +89,74 @@ smart-door-system
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes.
+
+### How to Contribute
+
+1. **Fork the repository**  
+   Click the "Fork" button on GitHub to create your own copy.
+
+2. **Clone your fork**
+
+   ```
+   git clone <your-fork-url>
+   cd smart-door-system
+   ```
+
+3. **Create a new branch for your feature or fix**
+
+   ```
+   git checkout -b feature/your-feature-name
+   ```
+
+4. **Make your changes**
+
+   - Follow the project structure and coding conventions.
+   - Add comments and documentation where necessary.
+   - If you add new features, update the README.md accordingly.
+
+5. **Test your changes**
+
+   - Run the backend and frontend locally to ensure everything works.
+   - Add unit tests if possible.
+
+6. **Commit your changes**
+
+   ```
+   git add .
+   git commit -m "Add: your feature or fix description"
+   ```
+
+7. **Push your branch to your fork**
+
+   ```
+   git push origin feature/your-feature-name
+   ```
+
+8. **Open a Pull Request**
+
+   - Go to the original repository on GitHub.
+   - Click "Compare & pull request".
+   - Fill in the PR template, describe your changes clearly, and reference any related issues.
+
+9. **Code Review**
+
+   - Respond to feedback from maintainers.
+   - Make any requested changes and push them to your branch.
+
+10. **Merge**
+    - Once approved, your PR will be merged!
+
+### Coding Guidelines
+
+- Use clear, descriptive commit messages.
+- Keep pull requests focused and small.
+- Write clean, readable code and follow the existing style.
+- Document any new APIs or configuration changes.
+- Test your code before submitting.
+
+### Contact
+
+If you have questions or need help, feel free to open an issue or contact the maintainers.
 
 ## License
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import * as faceapi from "face-api.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +12,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Camera,
   Lock,
@@ -28,6 +28,11 @@ interface CameraDevice {
   label: string;
 }
 
+interface DetectedFace {
+  detection: faceapi.FaceDetection;
+  descriptor?: Float32Array;
+}
+
 export default function SmartDoorSystem() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
@@ -38,14 +43,116 @@ export default function SmartDoorSystem() {
   >("idle");
   const [cameraError, setCameraError] = useState<string>("");
   const [isClient, setIsClient] = useState(false);
+  const [detectedFaces, setDetectedFaces] = useState<DetectedFace[]>([]);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Load face-api.js models
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
+          faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
+          faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
+          faceapi.nets.faceExpressionNet.loadFromUri("/models"),
+        ]);
+        setModelsLoaded(true);
+        console.log("Face-api.js models loaded successfully");
+      } catch (error) {
+        console.error("Error loading face-api.js models:", error);
+        setCameraError("Không thể tải models nhận diện khuôn mặt");
+      }
+    };
+
+    if (isClient) {
+      loadModels();
+    }
+  }, [isClient]);
 
   // Đảm bảo component chỉ render sau khi mount (client-side)
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Face detection function
+  const detectFaces = async () => {
+    if (
+      !videoRef.current ||
+      !canvasRef.current ||
+      !modelsLoaded ||
+      !isStreaming
+    )
+      return;
+
+    try {
+      const detections = await faceapi
+        .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+
+      const canvas = canvasRef.current;
+      const displaySize = {
+        width: videoRef.current.videoWidth,
+        height: videoRef.current.videoHeight,
+      };
+
+      faceapi.matchDimensions(canvas, displaySize);
+      const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+      // Clear canvas
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw face boxes and landmarks
+        faceapi.draw.drawDetections(canvas, resizedDetections);
+        faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+
+        // Draw custom face boxes with labels
+        resizedDetections.forEach((detection, index) => {
+          const box = detection.detection.box;
+          ctx.strokeStyle = "#00ff00";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+          // Add label
+          ctx.fillStyle = "#00ff00";
+          ctx.font = "16px Arial";
+          ctx.fillText(`Khuôn mặt ${index + 1}`, box.x, box.y - 5);
+        });
+      }
+
+      setDetectedFaces(
+        detections.map((d) => ({
+          detection: d.detection,
+          descriptor: d.descriptor,
+        }))
+      );
+    } catch (error) {
+      console.error("Error detecting faces:", error);
+    }
+  };
+
+  // Start face detection interval
+  useEffect(() => {
+    if (isStreaming && modelsLoaded) {
+      detectionIntervalRef.current = setInterval(detectFaces, 300);
+    } else if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
+    }
+
+    return () => {
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+      }
+    };
+  }, [isStreaming, modelsLoaded]);
 
   // Kiểm tra support và quyền camera
   const checkCameraSupport = () => {
@@ -154,6 +261,11 @@ export default function SmartDoorSystem() {
             ?.play()
             .then(() => {
               setIsStreaming(true);
+              // Setup canvas size
+              if (canvasRef.current && videoRef.current) {
+                canvasRef.current.width = videoRef.current.videoWidth;
+                canvasRef.current.height = videoRef.current.videoHeight;
+              }
             })
             .catch((playError) => {
               console.error("Error playing video:", playError);
@@ -192,13 +304,21 @@ export default function SmartDoorSystem() {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
+    }
     setIsStreaming(false);
     setRecognitionStatus("idle");
+    setDetectedFaces([]);
   };
 
   // Chụp ảnh để nhận diện
   const captureAndRecognize = async () => {
-    if (!videoRef.current || !isStreaming) return;
+    if (!videoRef.current || !isStreaming || detectedFaces.length === 0) {
+      alert("Không phát hiện khuôn mặt nào để nhận diện!");
+      return;
+    }
 
     setRecognitionStatus("scanning");
 
@@ -212,34 +332,47 @@ export default function SmartDoorSystem() {
         ctx.drawImage(videoRef.current, 0, 0);
         const imageData = canvas.toDataURL("image/jpeg", 0.8);
 
-        // TODO: Gửi ảnh đến FastAPI backend để nhận diện
-        console.log("Captured image data length:", imageData.length);
+        // Gửi ảnh đến backend để nhận diện
+        const response = await fetch("/api/faces/recognize", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ image: imageData }),
+        });
 
-        // Giả lập phản hồi
-        setTimeout(() => {
-          const isRecognized = Math.random() > 0.3; // Tăng tỷ lệ thành công
-          setRecognitionStatus(isRecognized ? "recognized" : "unknown");
+        const result = await response.json();
 
-          if (isRecognized) {
-            setDoorStatus("unlocked");
-            setTimeout(() => {
-              setDoorStatus("locked");
-              setRecognitionStatus("idle");
-            }, 3000);
-          } else {
-            setTimeout(() => setRecognitionStatus("idle"), 2000);
-          }
-        }, 2000);
+        if (response.ok && result.result.recognized) {
+          setRecognitionStatus("recognized");
+          setDoorStatus("unlocked");
+
+          // Tự động khóa sau 3 giây
+          setTimeout(() => {
+            setDoorStatus("locked");
+            setRecognitionStatus("idle");
+          }, 3000);
+        } else {
+          setRecognitionStatus("unknown");
+          setTimeout(() => setRecognitionStatus("idle"), 2000);
+        }
       }
     } catch (error) {
-      console.error("Error capturing image:", error);
-      setRecognitionStatus("idle");
+      console.error("Error recognizing face:", error);
+      setRecognitionStatus("unknown");
+      setTimeout(() => setRecognitionStatus("idle"), 2000);
     }
   };
 
   // Thêm khuôn mặt mới
   const addNewFace = async () => {
-    if (!videoRef.current || !isStreaming) return;
+    if (!videoRef.current || !isStreaming || detectedFaces.length === 0) {
+      alert("Không phát hiện khuôn mặt nào để thêm!");
+      return;
+    }
+
+    const name = prompt("Nhập tên cho khuôn mặt mới:");
+    if (!name) return;
 
     try {
       const canvas = document.createElement("canvas");
@@ -251,13 +384,24 @@ export default function SmartDoorSystem() {
         ctx.drawImage(videoRef.current, 0, 0);
         const imageData = canvas.toDataURL("image/jpeg", 0.8);
 
-        // TODO: Gửi ảnh đến FastAPI backend để thêm khuôn mặt mới
-        console.log("Adding new face, image data length:", imageData.length);
-        alert("Đã chụp ảnh để thêm khuôn mặt mới!");
+        const response = await fetch("/api/faces/add", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name, image: imageData }),
+        });
+
+        if (response.ok) {
+          alert("Đã thêm khuôn mặt mới thành công!");
+        } else {
+          const error = await response.json();
+          alert("Lỗi: " + error.detail);
+        }
       }
     } catch (error) {
       console.error("Error adding new face:", error);
-      setCameraError("Lỗi khi chụp ảnh để thêm khuôn mặt.");
+      alert("Lỗi khi thêm khuôn mặt mới.");
     }
   };
 
@@ -305,6 +449,7 @@ export default function SmartDoorSystem() {
                 <CardTitle className="flex items-center gap-2">
                   <Camera className="h-5 w-5" />
                   Camera Feed
+                  {modelsLoaded && <Badge variant="outline">AI Ready</Badge>}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -339,7 +484,7 @@ export default function SmartDoorSystem() {
                     </Button>
                   </div>
 
-                  {/* Video Display */}
+                  {/* Video Display with Face Detection Overlay */}
                   <div className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden">
                     <video
                       ref={videoRef}
@@ -348,6 +493,12 @@ export default function SmartDoorSystem() {
                       muted
                       style={{ transform: "scaleX(-1)" }} // Mirror effect
                     />
+                    <canvas
+                      ref={canvasRef}
+                      className="absolute inset-0 w-full h-full"
+                      style={{ transform: "scaleX(-1)" }}
+                    />
+
                     {!isStreaming && (
                       <div className="absolute inset-0 flex items-center justify-center text-white">
                         <div className="text-center">
@@ -361,7 +512,6 @@ export default function SmartDoorSystem() {
                       </div>
                     )}
 
-                    {/* Recognition overlay */}
                     {recognitionStatus === "scanning" && (
                       <div className="absolute inset-0 bg-blue-500 bg-opacity-20 flex items-center justify-center">
                         <div className="bg-white rounded-lg p-4 shadow-lg">
@@ -372,6 +522,19 @@ export default function SmartDoorSystem() {
                         </div>
                       </div>
                     )}
+
+                    {/* Face Detection Status */}
+                    {isStreaming && (
+                      <div className="absolute top-4 left-4">
+                        <Badge
+                          variant={
+                            detectedFaces.length > 0 ? "default" : "secondary"
+                          }
+                        >
+                          Phát hiện: {detectedFaces.length} khuôn mặt
+                        </Badge>
+                      </div>
+                    )}
                   </div>
 
                   {/* Control Buttons */}
@@ -379,7 +542,9 @@ export default function SmartDoorSystem() {
                     <Button
                       onClick={captureAndRecognize}
                       disabled={
-                        !isStreaming || recognitionStatus === "scanning"
+                        !isStreaming ||
+                        recognitionStatus === "scanning" ||
+                        detectedFaces.length === 0
                       }
                       className="flex-1"
                     >
@@ -389,7 +554,7 @@ export default function SmartDoorSystem() {
                     </Button>
                     <Button
                       onClick={addNewFace}
-                      disabled={!isStreaming}
+                      disabled={!isStreaming || detectedFaces.length === 0}
                       variant="outline"
                       className="flex items-center gap-2"
                     >
@@ -469,16 +634,14 @@ export default function SmartDoorSystem() {
                   <Badge variant="outline">{cameras.length}</Badge>
                 </div>
                 <div className="flex justify-between">
-                  <span>Khuôn mặt đã lưu:</span>
-                  <Badge variant="outline">5</Badge>
+                  <span>Khuôn mặt phát hiện:</span>
+                  <Badge variant="outline">{detectedFaces.length}</Badge>
                 </div>
                 <div className="flex justify-between">
-                  <span>Lượt truy cập hôm nay:</span>
-                  <Badge variant="outline">12</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span>Trạng thái ESP8266:</span>
-                  <Badge variant="default">Kết nối</Badge>
+                  <span>AI Models:</span>
+                  <Badge variant={modelsLoaded ? "default" : "secondary"}>
+                    {modelsLoaded ? "Đã tải" : "Đang tải"}
+                  </Badge>
                 </div>
               </CardContent>
             </Card>
