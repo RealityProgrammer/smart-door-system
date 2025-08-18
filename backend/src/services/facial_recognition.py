@@ -15,6 +15,7 @@ import tensorflow as tf
 # Local imports
 from src.utils.image_utils import decode_base64_image, encode_image_to_base64
 from src.config.deepface_config import DEFAULT_CONFIG, REALTIME_CONFIG, ENROLLMENT_CONFIG
+from src.services.supabase_service import supabase_service
 
 logger = logging.getLogger(__name__)
 
@@ -406,7 +407,6 @@ class DeepFacialRecognitionService:
     def add_face_embedding(self, name: str, image_base64: str, variation_type: str = "default") -> Dict:
         """
         Thêm một embedding mới cho người dùng đã tồn tại hoặc tạo mới
-        variation_type: 'default', 'with_glasses', 'no_glasses', 'left_angle', 'right_angle', etc.
         """
         try:
             logger.info(f"Adding face embedding for: {name} (variation: {variation_type})")
@@ -431,40 +431,48 @@ class DeepFacialRecognitionService:
             if np.any(np.isnan(embedding)) or np.any(np.isinf(embedding)):
                 raise ValueError("Invalid embedding values detected")
             
-            # Save image
+            # Generate file name
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             image_filename = f"{name}_{variation_type}_{timestamp}.jpg"
-            image_path = os.path.join(self.faces_images_dir, image_filename)
             
-            # Convert RGB to BGR and save
+            # Upload to Supabase Storage
+            image_url = supabase_service.upload_image(image_base64, image_filename)
+            
+            if not image_url:
+                raise ValueError("Failed to upload image to cloud storage")
+            
+            # Also save locally as backup (optional)
+            local_image_path = os.path.join(self.faces_images_dir, image_filename)
             img_bgr = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
-            success = cv2.imwrite(image_path, img_bgr)
+            cv2.imwrite(local_image_path, img_bgr)
             
-            if not success:
-                raise ValueError("Failed to save image")
+            # Save embedding to file
+            embedding_path = os.path.join(self.faces_embeddings_dir, f"{name}_{variation_type}_{timestamp}.npy")
+            np.save(embedding_path, embedding)
             
             # Add to database
             if name not in self.known_faces:
-                # Tạo mới user
                 self.known_faces[name] = {
                     'embeddings': [],
                     'images': [],
+                    'image_urls': [],  # New field for Supabase URLs
                     'variations': [],
                     'model': config['model_name'],
                     'added_date': datetime.now().isoformat(),
                     'total_embeddings': 0
                 }
             
-            # Thêm embedding mới
+            # Add new embedding and URL
             self.known_faces[name]['embeddings'].append(embedding)
-            self.known_faces[name]['images'].append(image_path)
+            self.known_faces[name]['images'].append(local_image_path)  # Local backup
+            self.known_faces[name]['image_urls'].append(image_url)     # Supabase URL
             self.known_faces[name]['variations'].append(variation_type)
             self.known_faces[name]['total_embeddings'] = len(self.known_faces[name]['embeddings'])
             self.known_faces[name]['last_updated'] = datetime.now().isoformat()
             
             # Save database
             self.save_known_faces()
-            self.save_face_info_multiple(name, image_path, config['model_name'], variation_type)
+            self.save_face_info_multiple(name, local_image_path, image_url, config['model_name'], variation_type)
             
             total_variations = len(self.known_faces[name]['embeddings'])
             logger.info(f"Successfully added embedding {total_variations} for {name} ({variation_type})")
@@ -475,12 +483,64 @@ class DeepFacialRecognitionService:
                 "variation_type": variation_type,
                 "total_variations": total_variations,
                 "model_used": config['model_name'],
+                "image_url": image_url,  # Return Supabase URL
                 "message": f"Added variation '{variation_type}' for {name}. Total: {total_variations} variations"
             }
             
         except Exception as e:
             logger.error(f"Error adding face embedding: {e}")
             raise ValueError(str(e))
+    
+    def save_face_info_multiple(self, name: str, image_path: str, image_url: str, model_name: str, variation_type: str):
+        """Save face information with Supabase URL"""
+        try:
+            faces_info = []
+            if os.path.exists(self.faces_info_path):
+                with open(self.faces_info_path, 'r', encoding='utf-8') as f:
+                    faces_info = json.load(f)
+            
+            # Find existing person
+            person_found = False
+            for person in faces_info:
+                if person['name'] == name:
+                    if 'variations' not in person:
+                        person['variations'] = []
+                    
+                    person['variations'].append({
+                        'type': variation_type,
+                        'image_path': image_path,      # Local backup
+                        'image_url': image_url,        # Supabase URL
+                        'added_date': datetime.now().isoformat()
+                    })
+                    person['total_variations'] = len(person['variations'])
+                    person['last_updated'] = datetime.now().isoformat()
+                    person_found = True
+                    break
+            
+            # Create new person if not found
+            if not person_found:
+                new_person = {
+                    'name': name,
+                    'model_name': model_name,
+                    'added_date': datetime.now().isoformat(),
+                    'recognition_count': 0,
+                    'variations': [{
+                        'type': variation_type,
+                        'image_path': image_path,
+                        'image_url': image_url,
+                        'added_date': datetime.now().isoformat()
+                    }],
+                    'total_variations': 1,
+                    'last_updated': datetime.now().isoformat()
+                }
+                faces_info.append(new_person)
+            
+            # Save file
+            with open(self.faces_info_path, 'w', encoding='utf-8') as f:
+                json.dump(faces_info, f, ensure_ascii=False, indent=2)
+                
+        except Exception as e:
+            logger.error(f"Error saving face info: {e}")
     
     def recognize_face(self, image_base64: str) -> Dict:
         """Recognize face in the given image"""
@@ -811,16 +871,16 @@ class DeepFacialRecognitionService:
             return False
 
     def delete_face_variation(self, name: str, variation_type: str) -> bool:
-        """Delete a specific variation of a person"""
+        """Delete a specific variation (including from Supabase)"""
         try:
             if name not in self.known_faces:
                 return False
             
             face_data = self.known_faces[name]
-            if 'variations' not in face_data or 'embeddings' not in face_data:
+            if 'variations' not in face_data:
                 return False
             
-            # Tìm index của variation cần xóa
+            # Find variation index
             variation_index = -1
             for i, var_type in enumerate(face_data['variations']):
                 if var_type == variation_type:
@@ -830,20 +890,27 @@ class DeepFacialRecognitionService:
             if variation_index == -1:
                 return False
             
-            # Xóa embedding và variation tương ứng
+            # Delete from Supabase if URL exists
+            if 'image_urls' in face_data and variation_index < len(face_data['image_urls']):
+                image_url = face_data['image_urls'][variation_index]
+                # Extract filename from URL
+                filename = image_url.split('/')[-1]
+                supabase_service.delete_image(filename)
+                face_data['image_urls'].pop(variation_index)
+            
+            # Delete local file
+            if 'images' in face_data and variation_index < len(face_data['images']):
+                local_path = face_data['images'][variation_index]
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+                face_data['images'].pop(variation_index)
+            
+            # Remove embedding and variation
             face_data['embeddings'].pop(variation_index)
             face_data['variations'].pop(variation_index)
-            
-            if len(face_data['images']) > variation_index:
-                image_path = face_data['images'].pop(variation_index)
-                # Xóa file ảnh
-                if os.path.exists(image_path):
-                    os.remove(image_path)
-            
-            # Cập nhật total_embeddings
             face_data['total_embeddings'] = len(face_data['embeddings'])
             
-            # Nếu không còn variation nào, xóa luôn person
+            # If no variations left, delete person entirely
             if len(face_data['embeddings']) == 0:
                 return self.delete_face(name)
             
@@ -855,7 +922,7 @@ class DeepFacialRecognitionService:
             return True
             
         except Exception as e:
-            logger.error(f"Error deleting variation {variation_type} for {name}: {e}")
+            logger.error(f"Error deleting variation: {e}")
             return False
     
     def _update_faces_info_after_variation_delete(self, name: str, variation_type: str):
@@ -905,25 +972,25 @@ class DeepFacialRecognitionService:
             logger.warning(f"Error validating image: {e}")
             return False
     
-    def save_face_info_multiple(self, name: str, image_path: str, model_name: str, variation_type: str):
-        """Save face information with multiple variations support"""
+    def save_face_info_multiple(self, name: str, image_path: str, image_url: str, model_name: str, variation_type: str):
+        """Save face information with Supabase URL"""
         try:
             faces_info = []
             if os.path.exists(self.faces_info_path):
                 with open(self.faces_info_path, 'r', encoding='utf-8') as f:
                     faces_info = json.load(f)
             
-            # Tìm person hiện tại
+            # Find existing person
             person_found = False
             for person in faces_info:
                 if person['name'] == name:
-                    # Update existing person
                     if 'variations' not in person:
                         person['variations'] = []
                     
                     person['variations'].append({
                         'type': variation_type,
-                        'image_path': image_path,
+                        'image_path': image_path,      # Local backup
+                        'image_url': image_url,        # Supabase URL
                         'added_date': datetime.now().isoformat()
                     })
                     person['total_variations'] = len(person['variations'])
@@ -931,7 +998,7 @@ class DeepFacialRecognitionService:
                     person_found = True
                     break
             
-            # Nếu chưa có person, tạo mới
+            # Create new person if not found
             if not person_found:
                 new_person = {
                     'name': name,
@@ -941,6 +1008,7 @@ class DeepFacialRecognitionService:
                     'variations': [{
                         'type': variation_type,
                         'image_path': image_path,
+                        'image_url': image_url,
                         'added_date': datetime.now().isoformat()
                     }],
                     'total_variations': 1,

@@ -25,6 +25,7 @@ import {
   Play,
   Pause,
   RotateCw,
+  MessageSquare,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { apiService } from "@/services/api";
@@ -46,6 +47,7 @@ import { FaceList } from "@/components/FaceManagement/FaceList";
 import { DoorStatus as DoorStatusComponent } from "@/components/Dashboard/DoorStatus";
 import { RecognitionStatus as RecognitionStatusComponent } from "@/components/Dashboard/RecognotionStatus";
 import { SystemInfo as SystemInfoComponent } from "@/components/Dashboard/SystemInfo";
+import { VoiceInterface } from "@/components/VoiceChat/VoiceInterface";
 
 export default function SmartDoorSystem(): JSX.Element | null {
   // Camera states
@@ -218,11 +220,18 @@ export default function SmartDoorSystem(): JSX.Element | null {
       !videoRef.current ||
       !canvasRef.current ||
       !modelsLoaded ||
-      !isStreaming
+      !isStreaming ||
+      !videoRef.current.videoWidth ||
+      !videoRef.current.videoHeight
     )
       return;
 
     try {
+      // Đảm bảo video đã load metadata
+      if (videoRef.current.readyState < 2) {
+        return; // Video chưa sẵn sàng
+      }
+
       const detections = await faceapi
         .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks()
@@ -230,8 +239,8 @@ export default function SmartDoorSystem(): JSX.Element | null {
 
       const canvas = canvasRef.current;
       const displaySize = {
-        width: videoRef.current.videoWidth,
-        height: videoRef.current.videoHeight,
+        width: videoRef.current.videoWidth || 640,
+        height: videoRef.current.videoHeight || 480,
       };
 
       faceapi.matchDimensions(canvas, displaySize);
@@ -313,20 +322,34 @@ export default function SmartDoorSystem(): JSX.Element | null {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
 
+        // Đảm bảo video load hoàn toàn trước khi play
         videoRef.current.onloadedmetadata = () => {
-          videoRef.current
-            ?.play()
-            .then(() => {
-              setIsStreaming(true);
-              if (canvasRef.current && videoRef.current) {
-                canvasRef.current.width = videoRef.current.videoWidth;
-                canvasRef.current.height = videoRef.current.videoHeight;
-              }
-            })
-            .catch((playError) => {
-              console.error("Error playing video:", playError);
-              setCameraError("Không thể phát video từ camera.");
-            });
+          if (videoRef.current) {
+            videoRef.current
+              .play()
+              .then(() => {
+                // Đợi một chút để video ổn định
+                setTimeout(() => {
+                  setIsStreaming(true);
+                  if (canvasRef.current && videoRef.current) {
+                    canvasRef.current.width =
+                      videoRef.current.videoWidth || 640;
+                    canvasRef.current.height =
+                      videoRef.current.videoHeight || 480;
+                  }
+                }, 500);
+              })
+              .catch((playError) => {
+                console.error("Error playing video:", playError);
+                setCameraError("Không thể phát video từ camera.");
+              });
+          }
+        };
+
+        // Xử lý lỗi video
+        videoRef.current.onerror = (error) => {
+          console.error("Video error:", error);
+          setCameraError("Lỗi video stream");
         };
       }
     } catch (error) {
@@ -852,7 +875,7 @@ export default function SmartDoorSystem(): JSX.Element | null {
 
         {/* Main Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="camera" className="flex items-center gap-2">
               <Camera className="h-4 w-4" />
               Camera & Nhận diện
@@ -860,6 +883,10 @@ export default function SmartDoorSystem(): JSX.Element | null {
             <TabsTrigger value="management" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Quản lý khuôn mặt
+            </TabsTrigger>
+            <TabsTrigger value="voice" className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Trợ lý giọng nói
             </TabsTrigger>
             <TabsTrigger value="dashboard" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
@@ -1050,7 +1077,16 @@ export default function SmartDoorSystem(): JSX.Element | null {
                             </>
                           )}
                         </Button>
-
+                        {/* Nút Nhận diện lại */}
+                        <Button
+                          onClick={startAutoRecognition}
+                          disabled={!isStreaming || autoRecognition.isActive}
+                          variant="outline"
+                          className="flex-1 min-w-0"
+                        >
+                          <Activity className="h-4 w-4 mr-2" />
+                          Nhận diện lại
+                        </Button>
                         <AddFaceDialog
                           onCapture={handleAddFaceVariation}
                           isLoading={isLoading}
@@ -1195,6 +1231,14 @@ export default function SmartDoorSystem(): JSX.Element | null {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          {/* Voice Interface Tab */}
+          <TabsContent value="voice" className="mt-6">
+            <VoiceInterface
+              onCaptureImage={captureImage}
+              isStreaming={isStreaming}
+            />
           </TabsContent>
         </Tabs>
       </div>

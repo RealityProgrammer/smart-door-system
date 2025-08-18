@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.api.routes import router
+from src.api.voice_routes import voice_router
 from src.api.websockets import websocket_endpoint
 import logging
 
@@ -21,6 +22,7 @@ app.add_middleware(
 
 # Include routes
 app.include_router(router, prefix="/api")
+app.include_router(voice_router, prefix="/api")
 
 # WebSocket endpoint
 app.websocket("/ws")(websocket_endpoint)
