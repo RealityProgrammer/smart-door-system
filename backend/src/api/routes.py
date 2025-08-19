@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from src.services.facial_recognition import add_face, recognize_face, get_faces_info, delete_face
 from src.services.camera_service import capture_frame, get_latest_frame, initialize_camera, start_capture, stop_capture, get_available_cameras, get_camera_info
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -131,9 +132,19 @@ async def delete_face_route(name: str):
 
 @router.get("/faces/info")
 async def get_faces_info_route():
-    """Get information about all faces in database"""
+    """Get information about all faces with Supabase URLs"""
     try:
         faces_info = get_faces_info()
+        
+        # Ensure all variations have image_url field
+        for person in faces_info:
+            if 'variations' in person:
+                for variation in person['variations']:
+                    if 'image_url' not in variation and 'image_path' in variation:
+                        # Fallback: generate URL from path if needed
+                        filename = os.path.basename(variation['image_path'])
+                        variation['image_url'] = f"/api/images/{filename}"
+        
         return {
             "success": True, 
             "faces": faces_info, 
@@ -142,6 +153,23 @@ async def get_faces_info_route():
     except Exception as e:
         logger.error(f"Error getting faces info: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# Add endpoint to serve local images as fallback
+@router.get("/images/{filename}")
+async def serve_image(filename: str):
+    """Serve local image files as fallback"""
+    try:
+        from fastapi.responses import FileResponse
+        image_path = os.path.join("data/faces", filename)
+        
+        if os.path.exists(image_path):
+            return FileResponse(image_path, media_type="image/jpeg")
+        else:
+            raise HTTPException(status_code=404, detail="Image not found")
+            
+    except Exception as e:
+        logger.error(f"Error serving image: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/health")
 async def health_check():

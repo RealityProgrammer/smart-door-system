@@ -9,3 +9,6 @@ tensorflow==2.15.0
 firebase-admin==7.1.0
 python-dotenv==1.1.1
 websockets==15.0.1
+supabase==2.18.1
+google-genai==1.30.0
+pydub==0.25.1
