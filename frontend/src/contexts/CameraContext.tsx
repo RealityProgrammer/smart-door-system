@@ -34,11 +34,13 @@ interface CameraContextType {
 const CameraContext = createContext<CameraContextType | null>(null);
 
 export function CameraProvider({ children }: { children: React.ReactNode }) {
+  // Persistent refs - không bao giờ thay đổi
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
 
+  // Enhanced capture function với better error handling
   const captureImage = useCallback((): string | null => {
     console.log("CameraContext captureImage called:", {
       hasVideo: !!videoRef.current,
@@ -46,11 +48,18 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
       videoWidth: videoRef.current?.videoWidth,
       videoHeight: videoRef.current?.videoHeight,
       readyState: videoRef.current?.readyState,
-      videoCurrentTime: videoRef.current?.currentTime,
+      currentTime: videoRef.current?.currentTime,
+      srcObject: !!videoRef.current?.srcObject,
     });
 
     if (!videoRef.current || !isStreaming) {
       console.log("Cannot capture: no video or not streaming");
+      return null;
+    }
+
+    // Check if video is actually playing
+    if (videoRef.current.paused || videoRef.current.ended) {
+      console.log("Video is paused or ended");
       return null;
     }
 
@@ -66,6 +75,7 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
+      // Create temporary canvas for capture
       const canvas = document.createElement("canvas");
       canvas.width = videoRef.current.videoWidth;
       canvas.height = videoRef.current.videoHeight;
@@ -76,6 +86,7 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
 
+      // Draw current video frame
       ctx.drawImage(videoRef.current, 0, 0);
       const dataURL = canvas.toDataURL("image/jpeg", 0.8);
 
@@ -100,6 +111,9 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
       isStreaming,
       readyState: videoRef.current?.readyState,
       currentTime: videoRef.current?.currentTime,
+      paused: videoRef.current?.paused,
+      ended: videoRef.current?.ended,
+      srcObject: !!videoRef.current?.srcObject,
     };
   }, [isStreaming]);
 
