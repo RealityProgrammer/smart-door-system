@@ -62,6 +62,7 @@ smart-door-system
    - Run the FastAPI application:
      ```
      uvicorn src.main:app --reload
+     uvicorn src.main:app --reload --host 0.0.0.0
      ```
 
 3. **Frontend Setup**:

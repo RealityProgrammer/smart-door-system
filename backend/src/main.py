@@ -5,6 +5,8 @@ from src.api.voice_routes import voice_router
 from src.api.websockets import websocket_endpoint
 from fastapi.staticfiles import StaticFiles
 import logging
+# Thêm door router
+from src.api.door_routes import door_router
 import os
 
 # Setup logging
@@ -16,7 +18,7 @@ app = FastAPI(title="Smart Door System API", version="1.0.0")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.117.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,6 +31,11 @@ app.mount("/static", StaticFiles(directory=static_path), name="static")
 # Include routes
 app.include_router(router, prefix="/api")
 app.include_router(voice_router, prefix="/api")
+
+
+
+# Include door routes
+app.include_router(door_router, prefix="/api")
 
 # WebSocket endpoint
 app.websocket("/ws")(websocket_endpoint)
