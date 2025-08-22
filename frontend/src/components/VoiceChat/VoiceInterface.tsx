@@ -34,19 +34,26 @@ import { useVoiceChat } from "@/hooks/useVoiceChat";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { useFaceDetection } from "@/hooks/useFaceDetection";
 import { CameraDevice } from "@/types";
+import { audioLibrary } from "@/services/audioLibrary";
+import { staticAudioLibrary } from "@/services/staticAudioLibrary";
 
 interface VoiceInterfaceProps {
-  onCaptureImage?: () => string | null; // Make optional since we'll have our own
-  isStreaming?: boolean; // Make optional
+  onCaptureImage?: () => string | null;
+  isStreaming?: boolean;
 }
 
 export function VoiceInterface({
   onCaptureImage,
   isStreaming: externalStreaming,
 }: VoiceInterfaceProps) {
+  // Core states
   const [mode, setMode] = useState<"voice" | "text">("voice");
   const [textInput, setTextInput] = useState("");
   const [pendingAudioBlob, setPendingAudioBlob] = useState<Blob | null>(null);
+
+  // Audio system states - BỔ SUNG THIẾU
+  const [hasPlayedWelcome, setHasPlayedWelcome] = useState(false);
+  const [isPlayingSystemAudio, setIsPlayingSystemAudio] = useState(false);
 
   // Internal camera states
   const [internalStreaming, setInternalStreaming] = useState(false);
@@ -297,46 +304,140 @@ export function VoiceInterface({
     };
   }, []);
 
+  // Auto-play welcome message when tab becomes active - SỬA LẠI
+  useEffect(() => {
+    if (isStreaming && !hasPlayedWelcome && mode === "voice") {
+      const playWelcome = async () => {
+        try {
+          await playSystemAudio("welcome");
+          setHasPlayedWelcome(true);
+        } catch (error) {
+          console.error("Failed to play welcome message:", error);
+        }
+      };
+      playWelcome();
+    }
+  }, [isStreaming, hasPlayedWelcome, mode]);
+
+  // Preload static audio library on mount
+  useEffect(() => {
+    staticAudioLibrary.preloadAllAudio().catch((error) => {
+      console.error("Failed to preload audio library:", error);
+    });
+  }, []);
+
+  // Play system audio - SỬA LẠI để dùng static files
+  const playSystemAudio = async (
+    audioKey:
+      | "welcome"
+      | "processing"
+      | "listening"
+      | "analyzing"
+      | "error"
+      | "noCamera"
+      | "noAudio"
+  ) => {
+    try {
+      setIsPlayingSystemAudio(true);
+
+      // Get audio from static library (instant if cached)
+      const audioBase64 = await staticAudioLibrary.getAudio(audioKey);
+
+      if (audioBase64) {
+        await playAudio(audioBase64, "audio/mpeg");
+      } else {
+        console.warn(`No audio available for key: ${audioKey}`);
+      }
+    } catch (error) {
+      console.error("Failed to play system audio:", error);
+    } finally {
+      setIsPlayingSystemAudio(false);
+    }
+  };
+
+  // Enhanced voice inquiry handler
   const handleVoiceInquiry = async () => {
-    // Use external capture function if available, otherwise use internal
     const captureFunction = onCaptureImage || captureInternalImage;
 
     if (!isStreaming) {
-      alert("Vui lòng bật camera trước khi sử dụng chức năng này");
+      await playSystemAudio("noCamera");
       return;
     }
 
     const faceImage = captureFunction();
     if (!faceImage) {
-      alert("Không thể chụp ảnh khuôn mặt. Vui lòng đảm bảo camera hoạt động.");
+      await playSystemAudio("noCamera");
       return;
     }
+
+    console.log("Face image captured:", faceImage.substring(0, 50) + "...");
 
     if (mode === "voice") {
       if (!isListening) {
         setPendingAudioBlob(null);
-        await startRecording();
+        try {
+          // Play listening prompt
+          await playSystemAudio("listening");
+
+          // Wait a bit then start recording
+          setTimeout(async () => {
+            await startRecording();
+            console.log("Recording started...");
+          }, 2000);
+        } catch (error) {
+          console.error("Error starting recording:", error);
+          await playSystemAudio("error");
+        }
       } else {
         try {
+          console.log("Stopping recording and processing...");
           const audioBlob = await stopRecording();
+
+          // Check if audio is too short
+          if (audioBlob.size < 1000) {
+            await playSystemAudio("noAudio");
+            return;
+          }
+
           setPendingAudioBlob(audioBlob);
+
+          // Play processing message
+          await playSystemAudio("analyzing");
+
+          console.log("Audio recorded:", {
+            size: audioBlob.size,
+            type: audioBlob.type,
+          });
+
           await processVoiceHealthInquiry(audioBlob, faceImage);
           setPendingAudioBlob(null);
         } catch (error) {
-          console.error("Recording error:", error);
-          alert("Lỗi khi ghi âm: " + (error as Error).message);
+          console.error("Recording/processing error:", error);
+          await playSystemAudio("error");
+          setPendingAudioBlob(null);
         }
       }
     } else {
       if (!textInput.trim()) {
-        alert("Vui lòng nhập câu hỏi");
+        await playSystemAudio("noAudio");
         return;
       }
-      await sendTextMessage(textInput, faceImage);
-      setTextInput("");
+
+      try {
+        // Play processing message for text mode too
+        await playSystemAudio("analyzing");
+
+        console.log("Sending text message:", textInput);
+        await sendTextMessage(textInput, faceImage);
+        setTextInput("");
+      } catch (error) {
+        console.error("Text message error:", error);
+        await playSystemAudio("error");
+      }
     }
   };
 
+  // Enhanced audio message handler with auto-play
   const handlePlayAudio = async (message: any) => {
     if (!message.audioBase64) return;
 
@@ -350,6 +451,19 @@ export function VoiceInterface({
       console.error("Audio play error:", error);
     }
   };
+
+  // Auto-play AI responses
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.type === "ai" && lastMessage.audioBase64 && !isPlaying) {
+        // Auto-play the latest AI response
+        setTimeout(() => {
+          handlePlayAudio(lastMessage);
+        }, 500);
+      }
+    }
+  }, [messages, isPlaying]);
 
   // Show error if speech recognition not supported in voice mode
   if (mode === "voice" && !isSupported) {
@@ -400,7 +514,10 @@ export function VoiceInterface({
                     </SelectTrigger>
                     <SelectContent>
                       {cameras.map((camera) => (
-                        <SelectItem key={camera.deviceId} value={camera.deviceId}>
+                        <SelectItem
+                          key={camera.deviceId}
+                          value={camera.deviceId}
+                        >
                           {camera.label}
                         </SelectItem>
                       ))}
@@ -531,6 +648,11 @@ export function VoiceInterface({
             {hasExternalCamera && isStreaming && (
               <Badge variant="default">Sẵn sàng</Badge>
             )}
+            {isPlayingSystemAudio && (
+              <Badge variant="outline" className="animate-pulse">
+                🎵 Đang nói...
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -539,7 +661,10 @@ export function VoiceInterface({
             <Button
               variant={mode === "voice" ? "default" : "outline"}
               size="sm"
-              onClick={() => setMode("voice")}
+              onClick={() => {
+                setMode("voice");
+                setHasPlayedWelcome(false); // Reset welcome for voice mode
+              }}
               disabled={!isSupported}
             >
               <Mic className="h-4 w-4 mr-1" />
@@ -555,25 +680,47 @@ export function VoiceInterface({
             </Button>
           </div>
 
+          {/* Welcome message for voice mode */}
+          {mode === "voice" && isStreaming && (
+            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2 text-blue-700">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                <p className="text-sm font-medium">
+                  🎤 Chế độ giọng nói đã sẵn sàng! Nhấn micro để bắt đầu hỏi về
+                  sức khỏe khuôn mặt.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Voice Mode Controls */}
           {mode === "voice" && (
             <div className="space-y-4">
               <div className="flex items-center gap-4">
                 <Button
                   onClick={handleVoiceInquiry}
-                  disabled={isProcessing || !isSupported || !isStreaming}
+                  disabled={
+                    isProcessing ||
+                    !isSupported ||
+                    !isStreaming ||
+                    isPlayingSystemAudio
+                  }
                   variant={isListening ? "destructive" : "default"}
                   className="flex items-center gap-2"
                 >
                   {isProcessing ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : isPlayingSystemAudio ? (
+                    <Volume2 className="h-4 w-4 animate-pulse" />
                   ) : isListening ? (
                     <MicOff className="h-4 w-4" />
                   ) : (
                     <Mic className="h-4 w-4" />
                   )}
                   {isProcessing
-                    ? "Đang xử lý..."
+                    ? "Đang phân tích..."
+                    : isPlayingSystemAudio
+                    ? "AI đang nói..."
                     : isListening
                     ? "Dừng & Phân tích"
                     : "Bắt đầu nói"}
@@ -583,20 +730,32 @@ export function VoiceInterface({
                   onClick={resetTranscript}
                   variant="outline"
                   size="sm"
-                  disabled={isListening || isProcessing}
+                  disabled={isListening || isProcessing || isPlayingSystemAudio}
                 >
                   Xóa
                 </Button>
+
+                {/* Quick action buttons */}
+                <Button
+                  onClick={() => playSystemAudio("welcome")}
+                  variant="outline"
+                  size="sm"
+                  disabled={isPlayingSystemAudio}
+                >
+                  🔊 Chào
+                </Button>
               </div>
 
-              {/* Transcript Display */}
+              {/* Enhanced transcript display */}
               {transcript && (
-                <div className="p-3 bg-gray-50 rounded">
-                  <p className="text-sm font-medium mb-1">Bạn đang nói:</p>
+                <div className="p-3 bg-gray-50 rounded border-l-4 border-blue-500">
+                  <p className="text-sm font-medium mb-1 text-blue-700">
+                    🎤 Bạn đang nói:
+                  </p>
                   <p className="text-gray-700">{transcript}</p>
                   {finalTranscript && (
-                    <p className="text-xs text-green-600 mt-1">
-                      ✓ Đã hoàn thành
+                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                      ✓ Hoàn thành - Đang phân tích...
                     </p>
                   )}
                 </div>
@@ -633,20 +792,25 @@ export function VoiceInterface({
             </div>
           )}
 
-          {/* Status */}
+          {/* Enhanced Status */}
           <div className="flex gap-2 flex-wrap">
             {mode === "voice" && (
               <Badge variant={isListening ? "default" : "secondary"}>
-                {isListening ? "Đang nghe..." : "Không hoạt động"}
+                {isListening ? "🎤 Đang nghe..." : "💤 Chờ lệnh"}
               </Badge>
             )}
-            {isProcessing && <Badge variant="outline">Đang xử lý AI...</Badge>}
-            {isPlaying && <Badge variant="outline">Đang phát audio</Badge>}
+            {isProcessing && (
+              <Badge variant="outline">🧠 AI đang phân tích...</Badge>
+            )}
+            {isPlaying && <Badge variant="outline">🔊 Phát âm thanh</Badge>}
+            {isPlayingSystemAudio && (
+              <Badge variant="outline">🤖 AI đang nói</Badge>
+            )}
             {pendingAudioBlob && (
-              <Badge variant="outline">Có audio chờ xử lý</Badge>
+              <Badge variant="outline">⏳ Audio chờ xử lý</Badge>
             )}
             {!isStreaming && (
-              <Badge variant="destructive">Cần bật camera</Badge>
+              <Badge variant="destructive">📷 Cần bật camera</Badge>
             )}
           </div>
 
@@ -662,12 +826,12 @@ export function VoiceInterface({
         </CardContent>
       </Card>
 
-      {/* Conversation History */}
+      {/* Enhanced Conversation History with auto-play indicators */}
       {messages.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              <span>Lịch sử hội thoại</span>
+              <span>💬 Lịch sử hội thoại</span>
               <Button variant="outline" size="sm" onClick={clearChat}>
                 <Trash2 className="h-4 w-4 mr-1" />
                 Xóa
@@ -676,7 +840,7 @@ export function VoiceInterface({
           </CardHeader>
           <CardContent>
             <div className="space-y-4 max-h-96 overflow-y-auto">
-              {messages.map((message) => (
+              {messages.map((message, index) => (
                 <div
                   key={message.id}
                   className={`flex ${
@@ -694,7 +858,7 @@ export function VoiceInterface({
                   >
                     <p className="text-sm">{message.text}</p>
 
-                    {/* Audio Play Button */}
+                    {/* Enhanced Audio Play Button */}
                     {message.audioBase64 && (
                       <div className="flex items-center gap-2 mt-2">
                         <Button
@@ -703,7 +867,7 @@ export function VoiceInterface({
                           onClick={() => handlePlayAudio(message)}
                           className="h-6 px-2"
                         >
-                          {currentAudio && isPlaying ? (
+                          {currentAudio === message.id && isPlaying ? (
                             <VolumeX className="h-3 w-3" />
                           ) : (
                             <Volume2 className="h-3 w-3" />
@@ -712,6 +876,12 @@ export function VoiceInterface({
                         <span className="text-xs opacity-70">
                           {message.audioFormat?.toUpperCase() || "MP3"}
                         </span>
+                        {index === messages.length - 1 &&
+                          message.type === "ai" && (
+                            <span className="text-xs opacity-70">
+                              🎵 Auto-play
+                            </span>
+                          )}
                       </div>
                     )}
 
@@ -726,27 +896,32 @@ export function VoiceInterface({
         </Card>
       )}
 
-      {/* Instructions */}
+      {/* Enhanced Instructions */}
       <Card>
         <CardContent className="pt-6">
           <div className="text-sm text-gray-600 space-y-2">
-            <h4 className="font-medium">Hướng dẫn sử dụng:</h4>
+            <h4 className="font-medium">🎯 Hướng dẫn sử dụng nâng cao:</h4>
             <ul className="text-xs space-y-1">
               <li>
-                • <strong>Bước 1:</strong> Bật camera ở phần trên để AI có thể
-                thấy khuôn mặt bạn
+                • <strong>🎤 Chế độ giọng nói:</strong> AI sẽ tự động chào và
+                hướng dẫn bạn
               </li>
               <li>
-                • <strong>Bước 2:</strong> Chọn chế độ giọng nói hoặc văn bản
+                • <strong>⚡ Tự động phát:</strong> Câu trả lời sẽ được phát
+                ngay khi có kết quả
               </li>
               <li>
-                • <strong>Chế độ giọng nói:</strong> Nhấn mic và nói câu hỏi
+                • <strong>📱 Tối ưu hóa:</strong> Hệ thống xử lý nhanh hơn với
+                câu hỏi ngắn gọn
               </li>
               <li>
-                • <strong>Chế độ văn bản:</strong> Gõ câu hỏi và nhấn Enter
+                • <strong>🔄 Thử lại:</strong> Nếu AI quá tải, hãy thử lại sau
+                vài giây
               </li>
-              <li>• AI sẽ phân tích khuôn mặt và trả lời bằng âm thanh</li>
-              <li>• Ví dụ: "Khuôn mặt tôi có vẻ mệt mỏi không?"</li>
+              <li>
+                • <strong>💡 Ví dụ:</strong> "Khuôn mặt tôi có vẻ mệt mỏi
+                không?" hoặc "Tôi có dấu hiệu thiếu ngủ không?"
+              </li>
             </ul>
           </div>
         </CardContent>

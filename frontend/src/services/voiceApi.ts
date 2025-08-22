@@ -2,30 +2,43 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/a
 
 export interface ChatResponse {
     success: boolean;
-    user_question: string;
-    ai_response: string;
+    user_message?: string;
+    user_question?: string;
+    ai_response?: string;
+    health_analysis?: string;
     response_audio_base64: string;
+    audio_mime_type?: string;
     audio_format?: string;
-    requires_face_image?: boolean;
     message: string;
 }
 
-export interface StartConversationResponse {
+export interface TranscribeResponse {
     success: boolean;
+    transcription: string;
     message: string;
-    response_audio_base64: string;
-    audio_format?: string;
-    conversation_started: boolean;
 }
 
 class VoiceApiService {
-    async startConversation(): Promise<StartConversationResponse> {
-        const response = await fetch(`${API_BASE_URL}/voice/start-conversation`, {
+    async transcribeAudio(audioBlob: Blob): Promise<TranscribeResponse> {
+        const formData = new FormData();
+        const audioFile = new File([audioBlob], 'voice.webm', {
+            type: audioBlob.type || 'audio/webm'
+        });
+        formData.append('audio', audioFile);
+
+        console.log('Transcribing audio:', {
+            size: audioBlob.size,
+            type: audioBlob.type
+        });
+
+        const response = await fetch(`${API_BASE_URL}/voice/transcribe`, {
             method: 'POST',
+            body: formData
         });
 
         if (!response.ok) {
-            throw new Error('Failed to start conversation');
+            const errorText = await response.text();
+            throw new Error(`Failed to transcribe audio: ${response.status} - ${errorText}`);
         }
 
         return await response.json();
@@ -45,12 +58,13 @@ class VoiceApiService {
             formData.append('face_image', faceImage);
         }
 
-        console.log('Sending audio to API:', {
+        console.log('Sending voice chat to API:', {
             size: audioBlob.size,
-            type: audioBlob.type
+            type: audioBlob.type,
+            hasFaceImage: !!faceImage
         });
 
-        const response = await fetch(`${API_BASE_URL}/voice/chat`, {
+        const response = await fetch(`${API_BASE_URL}/voice/health-inquiry`, {
             method: 'POST',
             body: formData
         });
@@ -63,30 +77,40 @@ class VoiceApiService {
         return await response.json();
     }
 
-    async transcribeAudio(audioBlob: Blob) {
+    async sendTextMessage(text: string, faceImage?: string): Promise<ChatResponse> {
         const formData = new FormData();
-        const audioFile = new File([audioBlob], 'voice.webm', {
-            type: audioBlob.type || 'audio/webm'
-        });
-        formData.append('audio', audioFile);
+        formData.append('message', text);
 
-        const response = await fetch(`${API_BASE_URL}/voice/transcribe`, {
+        if (faceImage) {
+            formData.append('face_image', faceImage);
+        }
+
+        console.log('Sending text message to API:', {
+            text,
+            hasFaceImage: !!faceImage
+        });
+
+        const response = await fetch(`${API_BASE_URL}/voice/chat`, {
             method: 'POST',
             body: formData
         });
 
         if (!response.ok) {
-            throw new Error('Failed to transcribe audio');
+            const errorText = await response.text();
+            throw new Error(`Failed to send text message: ${response.status} - ${errorText}`);
         }
 
         return await response.json();
     }
 
-    async textToSpeech(text: string): Promise<Blob> {
+    async textToSpeech(text: string, format: string = "mp3"): Promise<Blob> {
+        const formData = new FormData();
+        formData.append('text', text);
+        formData.append('format', format);
+
         const response = await fetch(`${API_BASE_URL}/voice/text-to-speech`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ text })
+            body: formData
         });
 
         if (!response.ok) {

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class GeminiService:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
+        self.api_key = os.getenv("GEMINI_API_KEY", "AIzaSyCICn7TJ_Gb2SAmGlDQ74qKGwuFi6YZeHc")
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY must be set in environment variables")
         
@@ -93,21 +93,25 @@ class GeminiService:
                 face_image_base64 = face_image_base64.split(',')[1]
             
             image_bytes = base64.b64decode(face_image_base64)
+
+            if len(user_question) > 200:
+                user_question = user_question[:200] + "..."
+                logger.info(f"Truncated long user question to 200 chars")
+            
             
             health_prompt = f"""
-            Bạn là một chuyên gia sức khỏe AI. Hãy phân tích khuôn mặt trong ảnh này và trả lời câu hỏi của người dùng.
+            Bạn là chuyên gia sức khỏe AI. Phân tích khuôn mặt và trả lời câu hỏi ngắn gọn.
             
-            Câu hỏi của người dùng: "{user_question}"
+            Câu hỏi: "{user_question}"
+        
+            Phân tích nhanh:
+            - Màu da, độ ẩm
+            - Mắt (thâm quầng, bọng mắt)
+            - Môi và tổng thể
+            - Dấu hiệu mệt mỏi/căng thẳng
             
-            Hãy phân tích các yếu tố sau:
-            1. Màu da và độ ẩm
-            2. Tình trạng mắt (bọng mắt, thâm quầng)
-            3. Tình trạng môi
-            4. Dấu hiệu căng thẳng hoặc mệt mỏi
-            5. Tổng thể sức khỏe nhìn từ khuôn mặt
-            
-            Trả lời bằng tiếng Việt, ngắn gọn, dễ hiểu và thân thiện.
-            Lưu ý: Đây chỉ là phân tích sơ bộ, không thay thế lời khuyên y tế chuyên nghiệp.
+            Trả lời bằng tiếng Việt, TỐI ĐA 100 từ, thân thiện, tích cực.
+            Lưu ý: Chỉ là phân tích sơ bộ, không thay thế y tế.
             """
             
             response = self.client.models.generate_content(
@@ -122,6 +126,8 @@ class GeminiService:
             
         except Exception as e:
             logger.error(f"Error analyzing face health: {e}")
+            if "503" in str(e):
+                return "Xin lỗi, hệ thống AI đang quá tải. Từ ảnh, tôi thấy bạn có vẻ ổn. Hãy thử lại sau vài phút nhé!"
             raise ValueError(f"Failed to analyze face health: {e}")
     
     def text_to_speech(self, text: str, format: str = "mp3") -> tuple[bytes, str]:

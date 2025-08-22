@@ -3,7 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.routes import router
 from src.api.voice_routes import voice_router
 from src.api.websockets import websocket_endpoint
+from fastapi.staticfiles import StaticFiles
 import logging
+import os
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +22,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files
+static_path = os.path.join(os.path.dirname(__file__), "..", "static")
+app.mount("/static", StaticFiles(directory=static_path), name="static")
+
 # Include routes
 app.include_router(router, prefix="/api")
 app.include_router(voice_router, prefix="/api")
@@ -30,6 +36,15 @@ app.websocket("/ws")(websocket_endpoint)
 @app.get("/")
 async def root():
     return {"message": "Smart Door System API is running"}
+
+@app.get("/audio-status")
+async def audio_status():
+    """Check available audio files"""
+    audio_dir = os.path.join(static_path, "audio")
+    files = []
+    if os.path.exists(audio_dir):
+        files = [f for f in os.listdir(audio_dir) if f.endswith('.mp3')]
+    return {"available_files": files}
 
 if __name__ == "__main__":
     import uvicorn

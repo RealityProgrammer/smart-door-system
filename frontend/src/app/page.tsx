@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, JSX } from "react";
 import * as faceapi from "face-api.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,14 +31,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { apiService } from "@/services/api";
 import { useFaceManagement } from "@/hooks/useFaceManagement";
 import {
-  CameraDevice,
   DetectedFace,
   DoorStatus,
   RecognitionStatus,
   SystemInfo,
   AutoRecognitionState,
   VARIATION_TYPES,
-  VariationType,
 } from "@/types";
 
 // Import các components quản lý khuôn mặt
@@ -48,21 +46,33 @@ import { DoorStatus as DoorStatusComponent } from "@/components/Dashboard/DoorSt
 import { RecognitionStatus as RecognitionStatusComponent } from "@/components/Dashboard/RecognotionStatus";
 import { SystemInfo as SystemInfoComponent } from "@/components/Dashboard/SystemInfo";
 import { VoiceInterface } from "@/components/VoiceChat/VoiceInterface";
+import { CameraProvider, useCamera } from "@/contexts/CameraContext";
 
-export default function SmartDoorSystem(): JSX.Element | null {
-  // Camera states
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [cameras, setCameras] = useState<CameraDevice[]>([]);
-  const [selectedCamera, setSelectedCamera] = useState<string>("");
-  const [cameraError, setCameraError] = useState<string>("");
-  const [autoStartCamera, setAutoStartCamera] = useState(true);
+// Main component wrapped with camera context
+function SmartDoorSystemContent(): JSX.Element | null {
+  // Use shared camera context
+  const {
+    videoRef,
+    canvasRef,
+    isStreaming,
+    cameras,
+    selectedCamera,
+    cameraError,
+    modelsLoaded,
+    startStream,
+    stopStream,
+    switchCamera,
+    getCameras,
+    captureImage,
+    setModelsLoaded,
+  } = useCamera();
 
   // Recognition states
   const [doorStatus, setDoorStatus] = useState<DoorStatus>("locked");
   const [recognitionStatus, setRecognitionStatus] =
     useState<RecognitionStatus>("idle");
   const [detectedFaces, setDetectedFaces] = useState<DetectedFace[]>([]);
-  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [autoStartCamera, setAutoStartCamera] = useState(true);
 
   // Auto recognition states
   const [autoRecognition, setAutoRecognition] = useState<AutoRecognitionState>({
@@ -87,9 +97,6 @@ export default function SmartDoorSystem(): JSX.Element | null {
   const { isLoading, addFaceVariation, faces, fetchFaces } =
     useFaceManagement();
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const autoRecognitionIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -112,87 +119,18 @@ export default function SmartDoorSystem(): JSX.Element | null {
         console.log("Face-api.js models loaded successfully");
       } catch (error) {
         console.error("Error loading face-api.js models:", error);
-        setCameraError("Không thể tải models nhận diện khuôn mặt");
       }
     };
 
     if (isClient) {
       loadModels();
     }
-  }, [isClient]);
+  }, [isClient, setModelsLoaded]);
 
   // Đảm bảo component chỉ render sau khi mount (client-side)
   useEffect(() => {
     setIsClient(true);
   }, []);
-
-  // Kiểm tra support và quyền camera
-  const checkCameraSupport = useCallback(() => {
-    if (
-      !navigator ||
-      !navigator.mediaDevices ||
-      !navigator.mediaDevices.getUserMedia
-    ) {
-      setCameraError(
-        "Trình duyệt không hỗ trợ camera API. Vui lòng sử dụng trình duyệt hiện đại khác."
-      );
-      return false;
-    }
-
-    if (
-      window.location.protocol !== "https:" &&
-      window.location.hostname !== "localhost"
-    ) {
-      setCameraError("Camera API yêu cầu HTTPS hoặc localhost để hoạt động.");
-      return false;
-    }
-
-    return true;
-  }, []);
-
-  // Lấy danh sách camera
-  const getCameras = useCallback(async () => {
-    try {
-      if (!checkCameraSupport()) return;
-
-      // Yêu cầu quyền truy cập camera trước khi enumerate
-      try {
-        const tempStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-        });
-        tempStream.getTracks().forEach((track) => track.stop());
-      } catch (permissionError) {
-        setCameraError(
-          "Không có quyền truy cập camera. Vui lòng cấp quyền và làm mới trang."
-        );
-        return;
-      }
-
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices
-        .filter((device) => device.kind === "videoinput")
-        .map((device, index) => ({
-          deviceId: device.deviceId,
-          label: device.label || `Camera ${index + 1}`,
-        }));
-
-      if (videoDevices.length === 0) {
-        setCameraError(
-          "Không tìm thấy camera nào. Vui lòng kiểm tra kết nối camera."
-        );
-        return;
-      }
-
-      setCameras(videoDevices);
-      if (!selectedCamera) {
-        setSelectedCamera(videoDevices[0].deviceId);
-      }
-      setCameraError("");
-    } catch (error) {
-      console.error("Error getting cameras:", error);
-      setCameraError("Lỗi khi truy cập camera: " + (error as Error).message);
-    }
-  }, [checkCameraSupport, selectedCamera]);
 
   // Auto-start camera when models loaded and cameras available
   useEffect(() => {
@@ -205,14 +143,7 @@ export default function SmartDoorSystem(): JSX.Element | null {
     ) {
       startStream();
     }
-  }, [isClient, modelsLoaded, cameras.length, autoStartCamera]);
-
-  // Load cameras khi component mount
-  useEffect(() => {
-    if (isClient) {
-      getCameras();
-    }
-  }, [isClient, getCameras]);
+  }, [isClient, modelsLoaded, cameras.length, autoStartCamera, isStreaming, startStream]);
 
   // Face detection function
   const detectFaces = useCallback(async () => {
@@ -277,7 +208,7 @@ export default function SmartDoorSystem(): JSX.Element | null {
     } catch (error) {
       console.error("Error detecting faces:", error);
     }
-  }, [modelsLoaded, isStreaming]);
+  }, [modelsLoaded, isStreaming, videoRef, canvasRef]);
 
   // Start face detection interval
   useEffect(() => {
@@ -295,132 +226,7 @@ export default function SmartDoorSystem(): JSX.Element | null {
     };
   }, [isStreaming, modelsLoaded, detectFaces]);
 
-  // Bắt đầu stream video
-  const startStream = async () => {
-    try {
-      if (!checkCameraSupport()) return;
-
-      setCameraError("");
-
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-
-      const constraints = {
-        video: {
-          deviceId: selectedCamera ? { exact: selectedCamera } : undefined,
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30, max: 60 },
-        },
-        audio: false,
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-
-        // Đảm bảo video load hoàn toàn trước khi play
-        videoRef.current.onloadedmetadata = () => {
-          if (videoRef.current) {
-            videoRef.current
-              .play()
-              .then(() => {
-                // Đợi một chút để video ổn định
-                setTimeout(() => {
-                  setIsStreaming(true);
-                  if (canvasRef.current && videoRef.current) {
-                    canvasRef.current.width =
-                      videoRef.current.videoWidth || 640;
-                    canvasRef.current.height =
-                      videoRef.current.videoHeight || 480;
-                  }
-                }, 500);
-              })
-              .catch((playError) => {
-                console.error("Error playing video:", playError);
-                setCameraError("Không thể phát video từ camera.");
-              });
-          }
-        };
-
-        // Xử lý lỗi video
-        videoRef.current.onerror = (error) => {
-          console.error("Video error:", error);
-          setCameraError("Lỗi video stream");
-        };
-      }
-    } catch (error) {
-      console.error("Error accessing camera:", error);
-      let errorMessage = "Không thể truy cập camera.";
-
-      if (error instanceof Error) {
-        if (error.name === "NotAllowedError") {
-          errorMessage =
-            "Quyền truy cập camera bị từ chối. Vui lòng cấp quyền và thử lại.";
-        } else if (error.name === "NotFoundError") {
-          errorMessage =
-            "Không tìm thấy camera. Vui lòng kiểm tra kết nối camera.";
-        } else if (error.name === "NotReadableError") {
-          errorMessage = "Camera đang được sử dụng bởi ứng dụng khác.";
-        } else if (error.name === "OverconstrainedError") {
-          errorMessage = "Camera không hỗ trợ các thiết lập được yêu cầu.";
-        }
-      }
-
-      setCameraError(errorMessage);
-    }
-  };
-
-  // Dừng stream video
-  const stopStream = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
-      detectionIntervalRef.current = null;
-    }
-    setIsStreaming(false);
-    setRecognitionStatus("idle");
-    setDetectedFaces([]);
-    stopAutoRecognition();
-  };
-
-  // Đổi camera
-  const switchCamera = async (newCameraId: string) => {
-    setSelectedCamera(newCameraId);
-    if (isStreaming) {
-      stopStream();
-      // Delay để đảm bảo camera cũ được giải phóng
-      setTimeout(() => {
-        startStream();
-      }, 500);
-    }
-  };
-
-  // Capture image function
-  const captureImage = (): string | null => {
-    if (!videoRef.current || !isStreaming) return null;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-
-    ctx.drawImage(videoRef.current, 0, 0);
-    return canvas.toDataURL("image/jpeg", 0.8);
-  };
-
-  // Auto recognition logic - Loại bỏ useCallback
+  // Auto recognition logic
   const performAutoRecognition = async () => {
     console.log("🔍 Auto Recognition Check:", {
       isStreaming,
@@ -599,7 +405,7 @@ export default function SmartDoorSystem(): JSX.Element | null {
     }
   };
 
-  // Auto recognition interval - Đơn giản hơn
+  // Auto recognition interval
   useEffect(() => {
     if (autoRecognition.isActive && isStreaming && modelsLoaded) {
       console.log("✅ Setting up auto recognition interval");
@@ -756,9 +562,6 @@ export default function SmartDoorSystem(): JSX.Element | null {
   // Cleanup khi component unmount
   useEffect(() => {
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
       if (detectionIntervalRef.current) {
         clearInterval(detectionIntervalRef.current);
       }
@@ -1144,8 +947,7 @@ export default function SmartDoorSystem(): JSX.Element | null {
                 <CardContent>
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600">
-                      Để thêm khuôn mặt mới hoặc variation cho người đã có, vui
-                      lòng bật camera ở tab "Camera & Nhận diện" trước.
+                      Camera đang được chia sẻ với tất cả các tab. Bạn có thể thêm khuôn mặt từ bất kỳ tab nào.
                     </p>
                     <AddFaceDialog
                       onCapture={handleAddFaceVariation}
@@ -1181,6 +983,11 @@ export default function SmartDoorSystem(): JSX.Element | null {
               {/* Face List */}
               <FaceList onDeleteSuccess={fetchFaces} />
             </div>
+          </TabsContent>
+
+          {/* Voice Assistant Tab - Now using shared camera */}
+          <TabsContent value="voice" className="mt-6">
+            <VoiceInterface />
           </TabsContent>
 
           {/* Dashboard Tab */}
@@ -1232,16 +1039,17 @@ export default function SmartDoorSystem(): JSX.Element | null {
               </Card>
             </div>
           </TabsContent>
-
-          {/* Voice Interface Tab */}
-          <TabsContent value="voice" className="mt-6">
-            <VoiceInterface
-              onCaptureImage={captureImage}
-              isStreaming={isStreaming}
-            />
-          </TabsContent>
         </Tabs>
       </div>
     </div>
+  );
+}
+
+// Main export với CameraProvider wrapper
+export default function SmartDoorSystem() {
+  return (
+    <CameraProvider>
+      <SmartDoorSystemContent />
+    </CameraProvider>
   );
 }

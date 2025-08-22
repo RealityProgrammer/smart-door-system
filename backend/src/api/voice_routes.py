@@ -14,6 +14,8 @@ async def transcribe_audio(audio: UploadFile = File(...)):
         audio_bytes = await audio.read()
         mime_type = audio.content_type or "audio/webm"
         
+        logger.info(f"Transcribing audio: {len(audio_bytes)} bytes, type: {mime_type}")
+        
         transcription = gemini_service.transcribe_audio(audio_bytes, mime_type)
         
         return {
@@ -33,6 +35,8 @@ async def text_to_speech(
 ):
     """Convert text to speech"""
     try:
+        logger.info(f"Converting text to speech: {text[:50]}...")
+        
         audio_data, mime_type = gemini_service.text_to_speech(text, format)
         
         # Determine file extension
@@ -61,12 +65,16 @@ async def voice_health_inquiry(
         audio_bytes = await audio.read()
         mime_type = audio.content_type or "audio/webm"
         
+        logger.info(f"Processing health inquiry: audio={len(audio_bytes)} bytes, face_image={len(face_image)} chars")
+        
         user_question, health_analysis, response_audio, audio_mime_type = gemini_service.process_voice_health_inquiry(
             audio_bytes, face_image, mime_type
         )
         
         # Return JSON response with audio as base64
         audio_base64 = base64.b64encode(response_audio).decode('utf-8')
+        
+        logger.info(f"Health inquiry completed: question='{user_question[:50]}...', analysis={len(health_analysis)} chars")
         
         return {
             "success": True,
@@ -89,6 +97,8 @@ async def analyze_face_health(
 ):
     """Analyze face health with text question"""
     try:
+        logger.info(f"Analyzing face health: question='{question[:50]}...', image={len(face_image)} chars")
+        
         health_analysis = gemini_service.analyze_face_health(face_image, question)
         
         return {
@@ -109,6 +119,8 @@ async def voice_chat(
 ):
     """General voice chat with optional face analysis"""
     try:
+        logger.info(f"Voice chat: message='{message[:50]}...', has_face_image={bool(face_image)}")
+        
         if face_image:
             response_text = gemini_service.analyze_face_health(face_image, message)
         else:
@@ -118,6 +130,8 @@ async def voice_chat(
         # Convert to speech
         response_audio, audio_mime_type = gemini_service.text_to_speech(response_text, "mp3")
         audio_base64 = base64.b64encode(response_audio).decode('utf-8')
+        
+        logger.info(f"Chat completed: response={len(response_text)} chars, audio={len(audio_base64)} chars")
         
         return {
             "success": True,

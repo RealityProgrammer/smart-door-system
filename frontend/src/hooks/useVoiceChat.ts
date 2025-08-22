@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { voiceApiService } from '@/services/voiceApi';
 
 export interface VoiceChatMessage {
     id: string;
@@ -35,38 +36,27 @@ export const useVoiceChat = () => {
         setError('');
 
         try {
-            // Create form data
-            const formData = new FormData();
-            formData.append('audio', audioBlob, 'voice.webm');
-            formData.append('face_image', faceImageBase64);
+            console.log('Processing voice health inquiry...');
 
-            // Call API
-            const response = await fetch('/api/voice/health-inquiry', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-                throw new Error(errorData.detail || 'Failed to process voice inquiry');
-            }
-
-            const data = await response.json();
+            // Call voice API service
+            const data = await voiceApiService.chatWithAI(audioBlob, faceImageBase64);
 
             if (!data.success) {
                 throw new Error(data.message || 'Server returned unsuccessful response');
             }
 
+            console.log('Voice health inquiry response:', data);
+
             // Add user message
             addMessage({
                 type: 'user',
-                text: data.user_question
+                text: data.user_question || 'Voice message processed'
             });
 
             // Add AI response with audio
             addMessage({
                 type: 'ai',
-                text: data.health_analysis,
+                text: data.health_analysis || data.ai_response || 'AI response received',
                 audioBase64: data.response_audio_base64,
                 audioFormat: data.audio_format || 'mp3',
                 audioMimeType: data.audio_mime_type || 'audio/mpeg'
@@ -95,37 +85,27 @@ export const useVoiceChat = () => {
         setError('');
 
         try {
-            const formData = new FormData();
-            formData.append('message', text);
-            if (faceImageBase64) {
-                formData.append('face_image', faceImageBase64);
-            }
+            console.log('Sending text message...');
 
-            const response = await fetch('/api/voice/chat', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to send message');
-            }
-
-            const data = await response.json();
+            // Call voice API service
+            const data = await voiceApiService.sendTextMessage(text, faceImageBase64);
 
             if (!data.success) {
                 throw new Error(data.message || 'Server error');
             }
 
+            console.log('Text message response:', data);
+
             // Add user message
             addMessage({
                 type: 'user',
-                text: data.user_message
+                text: data.user_message || text
             });
 
             // Add AI response
             addMessage({
                 type: 'ai',
-                text: data.ai_response,
+                text: data.ai_response || data.health_analysis || 'AI response received',
                 audioBase64: data.response_audio_base64,
                 audioFormat: data.audio_format || 'mp3',
                 audioMimeType: data.audio_mime_type || 'audio/mpeg'
@@ -135,6 +115,12 @@ export const useVoiceChat = () => {
             const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
             setError(errorMessage);
             console.error('Text chat error:', err);
+
+            // Add error message
+            addMessage({
+                type: 'system',
+                text: `Lỗi: ${errorMessage}`
+            });
         } finally {
             setIsProcessing(false);
         }
