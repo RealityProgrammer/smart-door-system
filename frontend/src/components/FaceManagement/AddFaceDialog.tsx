@@ -195,7 +195,7 @@ export function AddFaceDialog({ onCapture, isLoading }: AddFaceDialogProps) {
           {/* Loại variation */}
           <div>
             <Label htmlFor="variation">Loại ảnh</Label>
-            <Select value={variationType} onValueChange={setVariationType}>
+            <Select value={variationType} onValueChange={(v) => setVariationType(v as VariationType)}>
               <SelectTrigger className="mt-1">
                 <SelectValue />
               </SelectTrigger>
