@@ -4,12 +4,12 @@
 #include <ArduinoJson.h>
 
 // WiFi credentials
-const char* ssid = "Maximus";
-const char* password = "Bathanggiacco";
+const char* ssid = "Redmi Note 14";
+const char* password = "Thanh12345";
 
 // Server settings
-const char* serverURL = "http://192.168.1.135:8000"; // IP máy chạy backend
-const String deviceId = "smart_door_001";
+const char* serverURL = "http://10.209.222.243:8000"; // IP máy chạy backend
+const String deviceId = "smart_door_002";
 
 // Hardware pins
 const int DOOR_LED_PIN = 2;  // Built-in LED (GPIO2)

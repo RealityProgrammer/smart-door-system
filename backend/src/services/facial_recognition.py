@@ -614,9 +614,9 @@ class DeepFacialRecognitionService:
                 best_distance = float(np.clip(best_distance, 0.0, 100.0))
             
             # Check if best match is within threshold
-            if best_match and best_distance <= threshold:
+            if best_match and best_distance <= threshold and confidence > 0.5:
                 # Calculate confidence
-                if config['distance_metric'] == 'cosine':
+                if config['distance_metric'] == 'cosine' :
                     # Cosine distance: 0 = identical, 1 = opposite
                     confidence = max(0.0, (threshold - best_distance) / threshold)
                 else:
