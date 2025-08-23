@@ -2,8 +2,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from src.services.facial_recognition import add_face, recognize_face, get_faces_info, delete_face
 from src.services.camera_service import capture_frame, get_latest_frame, initialize_camera, start_capture, stop_capture, get_available_cameras, get_camera_info
+from src.services.door_service import door_service
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,6 @@ async def add_face_route(request: FaceAddRequest):
         if not name or len(name) < 2:
             raise HTTPException(status_code=400, detail="Name must be at least 2 characters")
         
-        import re
         # Cập nhật regex để hỗ trợ Unicode (tiếng Việt)
         if not re.match(r"^[\w\s\u00C0-\u024F\u1E00-\u1EFF]+$", name, re.UNICODE):
             raise HTTPException(status_code=400, detail="Name contains invalid characters")
@@ -57,14 +58,43 @@ async def add_face_route(request: FaceAddRequest):
 
 @router.post("/faces/recognize")
 async def recognize_face_route(request: FaceRecognizeRequest):
-    """Recognize face using provided image from client"""
+    """Recognize face and trigger door opening if successful"""
     try:
-        # Bắt buộc phải có image từ client
         if not request.image:
             raise HTTPException(status_code=400, detail="Image is required from client")
         
         result = recognize_face(request.image)
-        return {"success": True, "message": "Face recognition completed", "result": result}
+        
+        # Nếu nhận diện thành công, gửi lệnh mở cửa
+        if result.get("recognized", False):
+            recognized_name = result.get("name", "Unknown")
+            
+            try:
+                # Gửi lệnh mở cửa cho tất cả thiết bị
+                devices = await door_service.get_all_devices()
+                for device in devices:
+                    if device["status"] == "online":
+                        await door_service.send_door_command(
+                            device["device_id"], 
+                            "open_door", 
+                            recognized_name
+                        )
+                        logger.info(f"Door open command sent to {device['device_id']} for {recognized_name}")
+                
+                # Thêm thông tin door command vào response
+                result["door_command_sent"] = True
+                result["devices_notified"] = len([d for d in devices if d["status"] == "online"])
+                
+            except Exception as door_error:
+                logger.error(f"Door command error: {door_error}")
+                result["door_command_sent"] = False
+                result["door_error"] = str(door_error)
+        
+        return {
+            "success": True, 
+            "message": "Face recognition completed", 
+            "result": result
+        }
         
     except ValueError as e:
         logger.error(f"Validation error recognizing face: {e}")

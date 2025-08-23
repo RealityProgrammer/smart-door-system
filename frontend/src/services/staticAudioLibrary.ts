@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://10.209.222.243:8000'
 
 export class StaticAudioLibrary {
     private static instance: StaticAudioLibrary;
