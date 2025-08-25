@@ -12,8 +12,8 @@ import { CameraDevice } from "@/types";
 
 interface CameraContextType {
   // Video refs
-  videoRef: React.RefObject<HTMLVideoElement> | null;
-  canvasRef: React.RefObject<HTMLCanvasElement> | null;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
   streamRef: React.RefObject<MediaStream | null>;
 
   // Camera states
