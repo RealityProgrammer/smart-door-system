@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import * as faceapi from 'face-api.js';
 import { DetectedFace } from '@/types';
 
-export const useFaceDetection = (videoRef: React.RefObject<HTMLVideoElement>, canvasRef: React.RefObject<HTMLCanvasElement>) => {
+export const useFaceDetection = (videoRef: React.RefObject<HTMLVideoElement | null>, canvasRef: React.RefObject<HTMLCanvasElement | null>) => {
     const [detectedFaces, setDetectedFaces] = useState<DetectedFace[]>([]);
     const [modelsLoaded, setModelsLoaded] = useState(false);
     const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);

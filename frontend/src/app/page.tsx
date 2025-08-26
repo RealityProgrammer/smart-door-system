@@ -83,6 +83,14 @@ function SmartDoorSystemContent(): JSX.Element | null {
     lastAttempt: 0,
   });
 
+  // Refs to avoid stale state inside intervals
+  const autoRecognitionRef = useRef(autoRecognition);
+  const recognitionStatusRef = useRef(recognitionStatus);
+  const detectedFacesRef = useRef(detectedFaces);
+  const isStreamingRef = useRef(isStreaming);
+  const modelsLoadedRef = useRef(modelsLoaded);
+  const isRecognitionInFlightRef = useRef(false);
+
   // UI states
   const [isClient, setIsClient] = useState(false);
   const [activeTab, setActiveTab] = useState("camera");
@@ -104,6 +112,13 @@ function SmartDoorSystemContent(): JSX.Element | null {
   useEffect(() => {
     fetchFaces();
   }, [fetchFaces]);
+
+  // Keep refs in sync
+  useEffect(() => { autoRecognitionRef.current = autoRecognition; }, [autoRecognition]);
+  useEffect(() => { recognitionStatusRef.current = recognitionStatus; }, [recognitionStatus]);
+  useEffect(() => { detectedFacesRef.current = detectedFaces; }, [detectedFaces]);
+  useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
+  useEffect(() => { modelsLoadedRef.current = modelsLoaded; }, [modelsLoaded]);
 
   // Load face-api.js models
   useEffect(() => {
@@ -228,43 +243,40 @@ function SmartDoorSystemContent(): JSX.Element | null {
 
   // Auto recognition logic
   const performAutoRecognition = async () => {
+    const currentAuto = autoRecognitionRef.current;
+    const currentStatus = recognitionStatusRef.current;
+    const facesCount = detectedFacesRef.current.length;
+    const nowStreaming = isStreamingRef.current;
+
     console.log("🔍 Auto Recognition Check:", {
-      isStreaming,
-      detectedFacesCount: detectedFaces.length,
-      recognitionStatus,
-      autoRecognitionActive: autoRecognition.isActive,
-      cooldownUntil: autoRecognition.cooldownUntil,
-      attemptCount: autoRecognition.attemptCount,
+      isStreaming: nowStreaming,
+      detectedFacesCount: facesCount,
+      recognitionStatus: currentStatus,
+      autoRecognitionActive: currentAuto.isActive,
+      cooldownUntil: currentAuto.cooldownUntil,
+      attemptCount: currentAuto.attemptCount,
+      inFlight: isRecognitionInFlightRef.current,
       now: Date.now(),
     });
 
     if (
-      !isStreaming ||
-      detectedFaces.length === 0 ||
-      recognitionStatus === "scanning"
+      !nowStreaming ||
+      facesCount === 0 ||
+      currentStatus === "scanning" ||
+      isRecognitionInFlightRef.current
     ) {
-      console.log("❌ Early return:", {
-        isStreaming,
-        detectedFacesCount: detectedFaces.length,
-        recognitionStatus,
-      });
       return;
     }
 
     const now = Date.now();
 
     // Kiểm tra cooldown
-    if (autoRecognition.cooldownUntil && now < autoRecognition.cooldownUntil) {
-      console.log("❌ Still in cooldown:", {
-        cooldownUntil: autoRecognition.cooldownUntil,
-        remaining: (autoRecognition.cooldownUntil - now) / 1000,
-      });
+    if (currentAuto.cooldownUntil && now < currentAuto.cooldownUntil) {
       return;
     }
 
     // Kiểm tra số lần thử
-    if (autoRecognition.attemptCount >= autoRecognition.maxAttempts) {
-      console.log("❌ Max attempts reached:", autoRecognition.attemptCount);
+    if (currentAuto.attemptCount >= currentAuto.maxAttempts) {
       setAutoRecognition((prev) => ({
         ...prev,
         cooldownUntil: now + 30000,
@@ -274,14 +286,12 @@ function SmartDoorSystemContent(): JSX.Element | null {
     }
 
     // Kiểm tra interval giữa các lần thử (tối thiểu 2 giây)
-    if (now - autoRecognition.lastAttempt < 2000) {
-      console.log("❌ Too soon since last attempt:", {
-        timeSince: now - autoRecognition.lastAttempt,
-      });
+    if (now - currentAuto.lastAttempt < 2000) {
       return;
     }
 
     console.log("✅ Starting recognition...");
+    isRecognitionInFlightRef.current = true;
     setRecognitionStatus("scanning");
 
     try {
@@ -299,6 +309,11 @@ function SmartDoorSystemContent(): JSX.Element | null {
         attemptCount: prev.attemptCount + 1,
         lastAttempt: now,
       }));
+      autoRecognitionRef.current = {
+        ...autoRecognitionRef.current,
+        attemptCount: autoRecognitionRef.current.attemptCount + 1,
+        lastAttempt: now,
+      };
 
       if (result.success && result.result) {
         const {
@@ -345,12 +360,14 @@ function SmartDoorSystemContent(): JSX.Element | null {
             setDoorStatus("locked");
             setRecognitionStatus("idle");
           }, 5000);
+          isRecognitionInFlightRef.current = false;
           return; // Thoát luôn, không nhận diện nữa
         } else {
           setRecognitionStatus("unknown");
 
           // Hiển thị cảnh báo nhẹ chỉ khi hết attempts
-          if (autoRecognition.attemptCount >= autoRecognition.maxAttempts - 1) {
+          const latestAuto = autoRecognitionRef.current;
+          if (latestAuto.attemptCount >= latestAuto.maxAttempts - 1) {
             const notification = document.createElement("div");
             notification.className =
               "fixed top-4 right-4 bg-yellow-500 text-white p-4 rounded-lg shadow-lg z-50";
@@ -379,6 +396,9 @@ function SmartDoorSystemContent(): JSX.Element | null {
       console.error("Auto recognition error:", error);
       setRecognitionStatus("idle");
     }
+    finally {
+      isRecognitionInFlightRef.current = false;
+    }
   };
 
   // Start auto recognition
@@ -403,13 +423,19 @@ function SmartDoorSystemContent(): JSX.Element | null {
       clearInterval(autoRecognitionIntervalRef.current);
       autoRecognitionIntervalRef.current = null;
     }
+    isRecognitionInFlightRef.current = false;
   };
 
   // Auto recognition interval
   useEffect(() => {
     if (autoRecognition.isActive && isStreaming && modelsLoaded) {
       console.log("✅ Setting up auto recognition interval");
-      const intervalId = setInterval(performAutoRecognition, 1000);
+      // Use a tighter control loop that respects in-flight guard
+      const intervalId = setInterval(() => {
+        if (!isRecognitionInFlightRef.current) {
+          performAutoRecognition();
+        }
+      }, 1000);
       autoRecognitionIntervalRef.current = intervalId;
     } else {
       if (autoRecognitionIntervalRef.current) {
