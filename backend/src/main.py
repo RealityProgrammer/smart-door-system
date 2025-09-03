@@ -10,7 +10,7 @@ from src.api.door_routes import door_router
 import os
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s - %(levelname)s]: %(message)s")
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Smart Door System API", version="1.0.0")
@@ -55,4 +55,4 @@ async def audio_status():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
