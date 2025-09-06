@@ -970,6 +970,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
                     Thêm khuôn mặt mới
                   </CardTitle>
                 </CardHeader>
+
                 <CardContent>
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600">

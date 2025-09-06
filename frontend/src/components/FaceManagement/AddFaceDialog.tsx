@@ -19,10 +19,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { UserPlus, Camera, AlertCircle } from "lucide-react";
+import {UserPlus, Camera, AlertCircle, Grid2X2, Grid} from "lucide-react";
 import { useFaceManagement } from "@/hooks/useFaceManagement";
 import { VARIATION_TYPES, VariationType } from "@/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {useCamera} from "@/contexts/CameraContext";
+import {CameraView} from "@/components/Camera/CameraView";
+import {FaceDetectionOverlay} from "@/components/Camera/FaceDetectionOverlay";
 
 interface AddFaceDialogProps {
   onCapture: (name: string, variationType: string) => Promise<void>;
@@ -30,6 +33,12 @@ interface AddFaceDialogProps {
 }
 
 export function AddFaceDialog({ onCapture, isLoading }: AddFaceDialogProps) {
+  const {
+    videoRef,
+    isStreaming,
+    cameraError
+  } = useCamera();
+
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [variationType, setVariationType] = useState<VariationType>("default");
@@ -123,12 +132,35 @@ export function AddFaceDialog({ onCapture, isLoading }: AddFaceDialogProps) {
           Thêm khuôn mặt
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2/3">
         <DialogHeader>
           <DialogTitle>Thêm khuôn mặt mới</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        {/*TODO: Fix camera video not displaying for some reason.*/}
+
+        <div className="grid grid-cols-3 gap-4">
+          <div className="col-span-2">
+            <div className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden">
+              <video
+                ref={videoRef}
+                className="w-full h-full object-cover"
+                playsInline
+                muted
+                style={{ transform: "scaleX(-1)" }}
+              />
+
+              {!isStreaming && (
+                  <div className="absolute inset-0 flex items-center justify-center text-white">
+                    <div className="text-center">
+                      <Camera className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p>{cameraError || "Camera chưa được bật"}</p>
+                    </div>
+                  </div>
+              )}
+            </div>
+          </div>
+          <div className="space-y-4 col-span-1">
           {/* Chọn chế độ */}
           <div>
             <Label>Chế độ</Label>
@@ -277,6 +309,7 @@ export function AddFaceDialog({ onCapture, isLoading }: AddFaceDialogProps) {
               Hủy
             </Button>
           </div>
+        </div>
         </div>
       </DialogContent>
     </Dialog>

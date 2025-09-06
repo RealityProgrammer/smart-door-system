@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Users, Trash2, Eye } from "lucide-react";
 import { useFaceManagement } from "@/hooks/useFaceManagement";
+import {FaceVariation} from "@/types";
+import {ViewFacesDialog} from "@/components/FaceManagement/ViewFacesDialog";
 
 interface FaceListProps {
   onDeleteSuccess?: () => void;
@@ -14,6 +16,9 @@ interface FaceListProps {
 export function FaceList({ onDeleteSuccess }: FaceListProps) {
   const { faces, isLoading, error, fetchFaces, deleteFace, getFaceVariations } =
     useFaceManagement();
+
+  const [openFaceVariationModal, setOpenFaceVariationModal] = useState(false);
+  const [faceVariants, setFaceVariants] = useState<FaceVariation[]>([]);
 
   useEffect(() => {
     fetchFaces();
@@ -30,11 +35,15 @@ export function FaceList({ onDeleteSuccess }: FaceListProps) {
 
   const handleViewVariations = async (name: string): Promise<void> => {
     const variations = await getFaceVariations(name);
-    alert(
-      `Variations cho ${name}:\n${variations
-        .map((v) => `- ${v.type} (${v.added_date})`)
-        .join("\n")}`
-    );
+
+    setOpenFaceVariationModal(true);
+    setFaceVariants(variations);
+
+    // alert(
+    //   `Variations cho ${name}:\n${variations
+    //     .map((v) => `- ${v.type} (${v.added_date})`)
+    //     .join("\n")}`
+    // );
   };
 
   return (
@@ -88,6 +97,10 @@ export function FaceList({ onDeleteSuccess }: FaceListProps) {
               </div>
             </div>
           ))}
+
+          {faceVariants.length > 0 && (
+            <ViewFacesDialog isOpen={openFaceVariationModal} onOpenChange={setOpenFaceVariationModal} faceVariations={faceVariants}/>
+          )}
 
           {faces.length === 0 && !isLoading && (
             <p className="text-gray-500 text-center py-4">

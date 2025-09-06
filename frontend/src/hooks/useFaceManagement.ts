@@ -108,7 +108,11 @@ export const useFaceManagement = () => {
     const getFaceVariations = useCallback(async (name: string): Promise<FaceVariation[]> => {
         try {
             const response = await apiService.getFaceVariations(name);
-            return response.success ? response.result?.variations || [] : [];
+
+            console.log("Response: " + JSON.stringify(response));
+
+            // TODO: The code returned the expected object structure, but the API need to be fixed.
+            return response.success ? response.variations || [] : [];
         } catch (error) {
             console.error('Error getting variations:', error);
             return [];
