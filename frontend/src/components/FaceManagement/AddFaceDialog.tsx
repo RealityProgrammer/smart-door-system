@@ -19,13 +19,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import {UserPlus, Camera, AlertCircle, Grid2X2, Grid} from "lucide-react";
+import { UserPlus, Camera, AlertCircle } from "lucide-react";
 import { useFaceManagement } from "@/hooks/useFaceManagement";
 import { VARIATION_TYPES, VariationType } from "@/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {useCamera} from "@/contexts/CameraContext";
-import {CameraView} from "@/components/Camera/CameraView";
-import {FaceDetectionOverlay} from "@/components/Camera/FaceDetectionOverlay";
+import Webcam from "react-webcam";
 
 interface AddFaceDialogProps {
   onCapture: (name: string, variationType: string) => Promise<void>;
@@ -33,12 +31,6 @@ interface AddFaceDialogProps {
 }
 
 export function AddFaceDialog({ onCapture, isLoading }: AddFaceDialogProps) {
-  const {
-    videoRef,
-    isStreaming,
-    cameraError
-  } = useCamera();
-
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [variationType, setVariationType] = useState<VariationType>("default");
@@ -124,6 +116,8 @@ export function AddFaceDialog({ onCapture, isLoading }: AddFaceDialogProps) {
     );
   };
 
+  // TODO: Camera device selection.
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -137,179 +131,164 @@ export function AddFaceDialog({ onCapture, isLoading }: AddFaceDialogProps) {
           <DialogTitle>Thêm khuôn mặt mới</DialogTitle>
         </DialogHeader>
 
-        {/*TODO: Fix camera video not displaying for some reason.*/}
-
-        <div className="grid grid-cols-3 gap-4">
-          <div className="col-span-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 flex flex-col items-center justify-center">
             <div className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden">
-              <video
-                ref={videoRef}
-                className="w-full h-full object-cover"
-                playsInline
-                muted
-                style={{ transform: "scaleX(-1)" }}
-              />
+              <Webcam audio={false} width={1920} height={1080} className="w-full h-full" style={{ transform: "scaleX(-1)" }}/>
+            </div>
+          </div>
 
-              {!isStreaming && (
-                  <div className="absolute inset-0 flex items-center justify-center text-white">
-                    <div className="text-center">
-                      <Camera className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <p>{cameraError || "Camera chưa được bật"}</p>
-                    </div>
-                  </div>
+          <div className="space-y-4 col-span-1">
+            {/* Chọn chế độ */}
+            <div>
+              <Label>Chế độ</Label>
+              <div className="flex gap-2 mt-2">
+                <Button
+                  variant={!existingPersonMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setExistingPersonMode(false);
+                    setName("");
+                    setNameError("");
+                  }}
+                >
+                  Người mới
+                </Button>
+                <Button
+                  variant={existingPersonMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setExistingPersonMode(true)}
+                  disabled={faces.length === 0}
+                >
+                  Thêm variation
+                </Button>
+              </div>
+            </div>
+
+            {/* Tên người */}
+            <div>
+              <Label htmlFor="name">Tên</Label>
+              {existingPersonMode ? (
+                <Select value={name} onValueChange={handleNameSelect}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn người có sẵn" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {faces.map((face) => (
+                      <SelectItem key={face.name} value={face.name}>
+                        <div className="flex items-center gap-2">
+                          {face.name}
+                          <Badge variant="outline" className="text-xs">
+                            {face.total_variations || 1} variations
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div>
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    placeholder="Nhập tên (hỗ trợ tiếng Việt)..."
+                    className={`mt-1 ${nameError ? "border-red-500" : ""}`}
+                  />
+                  {nameError && (
+                    <p className="text-sm text-red-500 mt-1">{nameError}</p>
+                  )}
+                </div>
               )}
             </div>
-          </div>
-          <div className="space-y-4 col-span-1">
-          {/* Chọn chế độ */}
-          <div>
-            <Label>Chế độ</Label>
-            <div className="flex gap-2 mt-2">
+
+            {/* Loại variation */}
+            <div>
+              <Label htmlFor="variation">Loại ảnh</Label>
+              <Select value={variationType} onValueChange={(v) => setVariationType(v as VariationType)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VARIATION_TYPES.map((type) => {
+                    const isRecommended =
+                      existingPersonMode &&
+                      getRecommendedVariations(name).includes(type.value);
+
+                    return (
+                      <SelectItem key={type.value} value={type.value}>
+                        <div className="flex items-center gap-2">
+                          {type.label}
+                          {isRecommended && (
+                            <Badge variant="secondary" className="text-xs">
+                              Đề xuất
+                            </Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Cảnh báo variation đã tồn tại */}
+            {existingPersonMode && name && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {(() => {
+                    const person = faces.find((f) => f.name === name);
+                    const existingVariations =
+                      person?.variations?.map((v) => v.type) || [];
+
+                    if (existingVariations.includes(variationType)) {
+                      return `⚠️ Variation "${
+                        VARIATION_TYPES.find((v) => v.value === variationType)
+                          ?.label
+                      }" đã tồn tại cho ${name}`;
+                    } else {
+                      return `✅ Variation "${
+                        VARIATION_TYPES.find((v) => v.value === variationType)
+                          ?.label
+                      }" sẽ được thêm cho ${name}`;
+                    }
+                  })()}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Hướng dẫn */}
+            <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded">
+              <h4 className="font-medium mb-1">Hướng dẫn chụp ảnh:</h4>
+              <ul className="text-xs space-y-1">
+                <li>• Đảm bảo khuôn mặt rõ ràng và đủ sáng</li>
+                <li>• Nhìn thẳng vào camera</li>
+                <li>• Nên chụp nhiều variation khác nhau để tăng độ chính xác</li>
+                <li>• Mỗi variation nên chụp 2-3 lần</li>
+              </ul>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-2">
               <Button
-                variant={!existingPersonMode ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setExistingPersonMode(false);
-                  setName("");
-                  setNameError("");
-                }}
+                onClick={handleSubmit}
+                disabled={isLoading || !name.trim() || !!nameError}
+                className="flex-1"
               >
-                Người mới
+                <Camera className="h-4 w-4 mr-2" />
+
+                {isLoading ? "Đang xử lý..." : "Chụp ảnh"}
               </Button>
               <Button
-                variant={existingPersonMode ? "default" : "outline"}
-                size="sm"
-                onClick={() => setExistingPersonMode(true)}
-                disabled={faces.length === 0}
+                variant="outline"
+                onClick={() => setOpen(false)}
+                disabled={isLoading}
               >
-                Thêm variation
+                Hủy
               </Button>
             </div>
           </div>
-
-          {/* Tên người */}
-          <div>
-            <Label htmlFor="name">Tên</Label>
-            {existingPersonMode ? (
-              <Select value={name} onValueChange={handleNameSelect}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn người có sẵn" />
-                </SelectTrigger>
-                <SelectContent>
-                  {faces.map((face) => (
-                    <SelectItem key={face.name} value={face.name}>
-                      <div className="flex items-center gap-2">
-                        {face.name}
-                        <Badge variant="outline" className="text-xs">
-                          {face.total_variations || 1} variations
-                        </Badge>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <div>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => handleNameChange(e.target.value)}
-                  placeholder="Nhập tên (hỗ trợ tiếng Việt)..."
-                  className={`mt-1 ${nameError ? "border-red-500" : ""}`}
-                />
-                {nameError && (
-                  <p className="text-sm text-red-500 mt-1">{nameError}</p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Loại variation */}
-          <div>
-            <Label htmlFor="variation">Loại ảnh</Label>
-            <Select value={variationType} onValueChange={(v) => setVariationType(v as VariationType)}>
-              <SelectTrigger className="mt-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {VARIATION_TYPES.map((type) => {
-                  const isRecommended =
-                    existingPersonMode &&
-                    getRecommendedVariations(name).includes(type.value);
-
-                  return (
-                    <SelectItem key={type.value} value={type.value}>
-                      <div className="flex items-center gap-2">
-                        {type.label}
-                        {isRecommended && (
-                          <Badge variant="secondary" className="text-xs">
-                            Đề xuất
-                          </Badge>
-                        )}
-                      </div>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Cảnh báo variation đã tồn tại */}
-          {existingPersonMode && name && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                {(() => {
-                  const person = faces.find((f) => f.name === name);
-                  const existingVariations =
-                    person?.variations?.map((v) => v.type) || [];
-
-                  if (existingVariations.includes(variationType)) {
-                    return `⚠️ Variation "${
-                      VARIATION_TYPES.find((v) => v.value === variationType)
-                        ?.label
-                    }" đã tồn tại cho ${name}`;
-                  } else {
-                    return `✅ Variation "${
-                      VARIATION_TYPES.find((v) => v.value === variationType)
-                        ?.label
-                    }" sẽ được thêm cho ${name}`;
-                  }
-                })()}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Hướng dẫn */}
-          <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded">
-            <h4 className="font-medium mb-1">Hướng dẫn chụp ảnh:</h4>
-            <ul className="text-xs space-y-1">
-              <li>• Đảm bảo khuôn mặt rõ ràng và đủ sáng</li>
-              <li>• Nhìn thẳng vào camera</li>
-              <li>• Nên chụp nhiều variation khác nhau để tăng độ chính xác</li>
-              <li>• Mỗi variation nên chụp 2-3 lần</li>
-            </ul>
-          </div>
-
-          {/* Buttons */}
-          <div className="flex gap-2">
-            <Button
-              onClick={handleSubmit}
-              disabled={isLoading || !name.trim() || !!nameError}
-              className="flex-1"
-            >
-              <Camera className="h-4 w-4 mr-2" />
-              {isLoading ? "Đang xử lý..." : "Chụp ảnh"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setOpen(false)}
-              disabled={isLoading}
-            >
-              Hủy
-            </Button>
-          </div>
-        </div>
         </div>
       </DialogContent>
     </Dialog>

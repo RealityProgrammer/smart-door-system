@@ -109,9 +109,6 @@ export const useFaceManagement = () => {
         try {
             const response = await apiService.getFaceVariations(name);
 
-            console.log("Response: " + JSON.stringify(response));
-
-            // TODO: The code returned the expected object structure, but the API need to be fixed.
             return response.success ? response.variations || [] : [];
         } catch (error) {
             console.error('Error getting variations:', error);
