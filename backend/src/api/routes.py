@@ -239,7 +239,7 @@ async def get_face_variations(name: str):
 async def delete_face_variation(name: str, variation_type: str):
     """Delete a specific variation of a person"""
     try:
-        from services.facial_recognition import facial_recognition_service
+        from src.services.facial_recognition import facial_recognition_service
         success = facial_recognition_service.delete_face_variation(name, variation_type)
         
         if success:
