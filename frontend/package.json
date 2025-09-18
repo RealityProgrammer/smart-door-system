@@ -19,7 +19,7 @@
     "clsx": "^2.1.1",
     "face-api.js": "^0.22.2",
     "lucide-react": "^0.539.0",
-    "next": "15.4.6",
+    "next": "^15.5.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-webcam": "^7.2.0",

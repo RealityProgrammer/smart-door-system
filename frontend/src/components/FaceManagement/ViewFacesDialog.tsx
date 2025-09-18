@@ -10,7 +10,7 @@ import 'swiper/css/navigation'
 import 'swiper/css/scrollbar'
 import 'swiper/css/pagination'
 import {CardTitle} from "@/components/ui/card";
-import {Badge} from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 
 interface ViewFacesDialogProps {
   isOpen: boolean;
