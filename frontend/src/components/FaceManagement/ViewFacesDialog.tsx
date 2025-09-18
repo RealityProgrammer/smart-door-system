@@ -25,6 +25,8 @@ export function ViewFacesDialog({ isOpen, onOpenChange, faceVariations } : ViewF
     setVariationIndex(slider.realIndex);
   };
 
+  // TODO: Delete variation after somebody pull an ID system for Face variation.
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2/3 xl:max-w-2/3">
@@ -35,7 +37,6 @@ export function ViewFacesDialog({ isOpen, onOpenChange, faceVariations } : ViewF
         { /* Image Carousel */}
         <div className="relative block w-full max-w-full min-w-0" style={{ WebkitUserSelect: "none", KhtmlUserSelect: "none", MozUserSelect: "none" }}>
           <Swiper
-            // install Swiper modules
             modules={[ Navigation, Pagination ]}
             spaceBetween={50}
             slidesPerView={1}
