@@ -42,8 +42,9 @@ export interface FaceInfo {
 }
 
 export interface FaceVariation {
-    type: string;
+    type: VariationType;
     image_path: string;
+    image_url: string;
     added_date: string;
 }
 
@@ -53,6 +54,13 @@ export interface ApiResponse<T> {
     result?: T;
     faces?: T[];
     total?: number;
+}
+
+export interface FaceVariationResponse {
+    success: boolean;
+    message: string;
+    variations: FaceVariation[];
+    total_variations: number;
 }
 
 // Add face request với variation type

@@ -21,7 +21,7 @@ export const useVoiceChat = () => {
     const addMessage = useCallback((message: Omit<VoiceChatMessage, 'id' | 'timestamp'>) => {
         const newMessage: VoiceChatMessage = {
             ...message,
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            id: Date.now().toString() + Math.random().toString(36).slice(2, 11),
             timestamp: new Date()
         };
         setMessages(prev => [...prev, newMessage]);

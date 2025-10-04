@@ -108,7 +108,8 @@ export const useFaceManagement = () => {
     const getFaceVariations = useCallback(async (name: string): Promise<FaceVariation[]> => {
         try {
             const response = await apiService.getFaceVariations(name);
-            return response.success ? response.result?.variations || [] : [];
+
+            return response.success ? response.variations || [] : [];
         } catch (error) {
             console.error('Error getting variations:', error);
             return [];
