@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { CameraDevice } from '@/types';
 
+// TODO: Rewrite this to use react-webcam library.
 export const useCamera = () => {
     const [isStreaming, setIsStreaming] = useState(false);
     const [cameras, setCameras] = useState<CameraDevice[]>([]);

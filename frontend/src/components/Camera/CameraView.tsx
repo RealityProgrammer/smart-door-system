@@ -15,6 +15,7 @@ import { Camera } from "lucide-react";
 import { useCamera } from "@/hooks/useCamera";
 import { useFaceDetection } from "@/hooks/useFaceDetection";
 import { FaceDetectionOverlay } from "./FaceDetectionOverlay";
+import {CameraSelect} from "@/components/Camera/CameraSelect";
 
 interface CameraViewProps {
   onCapture: (imageBase64: string) => void;
@@ -71,22 +72,30 @@ export function CameraView({ onCapture, isScanning }: CameraViewProps) {
         <div className="space-y-4">
           {/* Camera Selection */}
           <div className="flex gap-4 items-center">
-            <Select
-              value={selectedCamera}
-              onValueChange={setSelectedCamera}
+            <CameraSelect
+              cameras={cameras}
+              onSelect={setSelectedCamera}
               disabled={isStreaming || cameras.length === 0}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Chọn camera" />
-              </SelectTrigger>
-              <SelectContent>
-                {cameras.map((camera) => (
-                  <SelectItem key={camera.deviceId} value={camera.deviceId}>
-                    {camera.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              selected={selectedCamera}
+            />
+
+            {/*<Select*/}
+            {/*  value={selectedCamera}*/}
+            {/*  onValueChange={setSelectedCamera}*/}
+            {/*  disabled={isStreaming || cameras.length === 0}*/}
+            {/*>*/}
+            {/*  <SelectTrigger className="w-full">*/}
+            {/*    <SelectValue placeholder="Chọn camera" />*/}
+            {/*  </SelectTrigger>*/}
+            {/*  <SelectContent>*/}
+            {/*    {cameras.map((camera) => (*/}
+            {/*      <SelectItem key={camera.deviceId} value={camera.deviceId}>*/}
+            {/*        {camera.label}*/}
+            {/*      </SelectItem>*/}
+            {/*    ))}*/}
+            {/*  </SelectContent>*/}
+            {/*</Select>*/}
+
             <Button
               onClick={isStreaming ? stopStream : startStream}
               variant={isStreaming ? "destructive" : "default"}
