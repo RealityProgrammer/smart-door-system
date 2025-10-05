@@ -11,6 +11,7 @@ export interface VoiceChatMessage {
     audioFormat?: string;
     audioMimeType?: string;
     requiresFaceImage?: boolean;
+    initialPlayed: boolean;
 }
 
 export const useVoiceChat = () => {
@@ -50,7 +51,8 @@ export const useVoiceChat = () => {
             // Add user message
             addMessage({
                 type: 'user',
-                text: data.user_question || 'Voice message processed'
+                text: data.user_question || 'Voice message processed',
+                initialPlayed: false,
             });
 
             // Add AI response with audio
@@ -59,7 +61,8 @@ export const useVoiceChat = () => {
                 text: data.health_analysis || data.ai_response || 'AI response received',
                 audioBase64: data.response_audio_base64,
                 audioFormat: data.audio_format || 'mp3',
-                audioMimeType: data.audio_mime_type || 'audio/mpeg'
+                audioMimeType: data.audio_mime_type || 'audio/mpeg',
+                initialPlayed: false,
             });
 
         } catch (err) {
@@ -70,7 +73,8 @@ export const useVoiceChat = () => {
             // Add error message
             addMessage({
                 type: 'system',
-                text: `Lỗi: ${errorMessage}`
+                text: `Lỗi: ${errorMessage}`,
+                initialPlayed: false,
             });
         } finally {
             setIsProcessing(false);
@@ -99,7 +103,8 @@ export const useVoiceChat = () => {
             // Add user message
             addMessage({
                 type: 'user',
-                text: data.user_message || text
+                text: data.user_message || text,
+                initialPlayed: false,
             });
 
             // Add AI response
@@ -108,7 +113,8 @@ export const useVoiceChat = () => {
                 text: data.ai_response || data.health_analysis || 'AI response received',
                 audioBase64: data.response_audio_base64,
                 audioFormat: data.audio_format || 'mp3',
-                audioMimeType: data.audio_mime_type || 'audio/mpeg'
+                audioMimeType: data.audio_mime_type || 'audio/mpeg',
+                initialPlayed: false,
             });
 
         } catch (err) {
@@ -119,7 +125,8 @@ export const useVoiceChat = () => {
             // Add error message
             addMessage({
                 type: 'system',
-                text: `Lỗi: ${errorMessage}`
+                text: `Lỗi: ${errorMessage}`,
+                initialPlayed: false,
             });
         } finally {
             setIsProcessing(false);

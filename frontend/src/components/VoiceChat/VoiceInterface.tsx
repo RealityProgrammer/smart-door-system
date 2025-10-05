@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
-import { useVoiceChat } from "@/hooks/useVoiceChat";
+import {useVoiceChat, VoiceChatMessage} from "@/hooks/useVoiceChat";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { useFaceDetection } from "@/hooks/useFaceDetection";
 import { CameraDevice } from "@/types";
@@ -438,7 +438,7 @@ export function VoiceInterface({
   };
 
   // Enhanced audio message handler with auto-play
-  const handlePlayAudio = async (message: any) => {
+  const handlePlayAudio = async (message: VoiceChatMessage) => {
     if (!message.audioBase64) return;
 
     try {
@@ -452,18 +452,21 @@ export function VoiceInterface({
     }
   };
 
+  // TODO: Fix message looping. When audio ends, isPlaying is set to false, but the useEffect depends on isPlaying
+  // thus when it jumps back to false, the effect is called, and it's play again, thus cause an infinite loop.
+
   // Auto-play AI responses
   useEffect(() => {
     if (messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
-      if (lastMessage.type === "ai" && lastMessage.audioBase64 && !isPlaying) {
-        // Auto-play the latest AI response
+
+      if (lastMessage.type === "ai" && lastMessage.audioBase64) {
         setTimeout(() => {
           handlePlayAudio(lastMessage);
         }, 500);
       }
     }
-  }, [messages, isPlaying]);
+  }, [messages]);
 
   // Show error if speech recognition not supported in voice mode
   if (mode === "voice" && !isSupported) {
@@ -607,7 +610,7 @@ export function VoiceInterface({
               <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded">
                 <h4 className="font-medium mb-1">💡 Hướng dẫn bật camera:</h4>
                 <ul className="text-xs space-y-1">
-                  <li>• Nhấn nút "Bật camera" ở trên</li>
+                  <li>• Nhấn nút &#34;Bật camera&#34; ở trên</li>
                   <li>• Cho phép truy cập camera khi trình duyệt hỏi</li>
                   <li>• Đảm bảo khuôn mặt rõ ràng trong khung hình</li>
                   <li>• Camera cần thiết để AI phân tích sức khỏe khuôn mặt</li>
@@ -626,7 +629,7 @@ export function VoiceInterface({
               <Camera className="h-5 w-5 text-green-600" />
               <div>
                 <p className="text-sm font-medium text-green-800">
-                  Đang sử dụng camera từ tab "Camera & Nhận diện"
+                  Đang sử dụng camera từ tab &#34;Camera & Nhận diện&#34;
                 </p>
                 <p className="text-xs text-green-600">
                   {isStreaming
@@ -919,8 +922,8 @@ export function VoiceInterface({
                 vài giây
               </li>
               <li>
-                • <strong>💡 Ví dụ:</strong> "Khuôn mặt tôi có vẻ mệt mỏi
-                không?" hoặc "Tôi có dấu hiệu thiếu ngủ không?"
+                • <strong>💡 Ví dụ:</strong> &#34;Khuôn mặt tôi có vẻ mệt mỏi
+                không?&#34; hoặc &#34;Tôi có dấu hiệu thiếu ngủ không&#34;
               </li>
             </ul>
           </div>

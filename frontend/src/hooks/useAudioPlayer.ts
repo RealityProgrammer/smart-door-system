@@ -72,6 +72,7 @@ export const useAudioPlayer = () => {
             // Create new audio element
             const audio = new Audio();
             audioRef.current = audio;
+            audio.loop = false;
 
             // Set up event listeners
             audio.onloadstart = () => {
