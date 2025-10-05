@@ -9,18 +9,24 @@ import React, {
   useEffect,
 } from "react";
 import { CameraDevice } from "@/types";
+import Webcam from "react-webcam";
+
+export class CameraError {
+  constructor(public message: string) {}
+}
+
+export type CameraState = 'disabled' | 'streaming' | CameraError;
 
 interface CameraContextType {
-  // Video refs
-  videoRef: React.RefObject<HTMLVideoElement | null>;
+  // References
+  webcamRef: React.RefObject<Webcam | null>;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   streamRef: React.RefObject<MediaStream | null>;
 
   // Camera states
-  isStreaming: boolean;
   cameras: CameraDevice[];
   selectedCamera: string;
-  cameraError: string;
+  cameraState : CameraState;
   modelsLoaded: boolean;
 
   // Camera control functions
@@ -31,8 +37,7 @@ interface CameraContextType {
   captureImage: () => string | null;
 
   // Setters
-  setIsStreaming: (streaming: boolean) => void;
-  setCameraError: (error: string) => void;
+  setCameraState: (state: CameraState) => void;
   setModelsLoaded: (loaded: boolean) => void;
 
   // Debug info
@@ -40,7 +45,7 @@ interface CameraContextType {
     hasVideo: boolean;
     videoWidth?: number;
     videoHeight?: number;
-    isStreaming: boolean;
+    cameraState: CameraState;
     readyState?: number;
     currentTime?: number;
     paused?: boolean;
@@ -53,23 +58,22 @@ const CameraContext = createContext<CameraContextType | null>(null);
 
 export function CameraProvider({ children }: { children: React.ReactNode }) {
   // Persistent refs - không bao giờ thay đổi
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const webcamRef = useRef<Webcam | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   // States
-  const [isStreaming, setIsStreaming] = useState(false);
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>("");
-  const [cameraError, setCameraError] = useState<string>("");
+  const [cameraState, setCameraState] = useState<CameraState>('disabled');
   const [modelsLoaded, setModelsLoaded] = useState(false);
 
   // Check camera support
   const checkCameraSupport = useCallback(() => {
     if (!navigator?.mediaDevices?.getUserMedia) {
-      setCameraError(
-        "Trình duyệt không hỗ trợ camera API. Vui lòng sử dụng trình duyệt hiện đại khác."
-      );
+      setCameraState({
+        message: "Trình duyệt không hỗ trợ camera API. Vui lòng sử dụng trình duyệt hiện đại khác."
+      });
       return false;
     }
 
@@ -77,7 +81,9 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
       window.location.protocol !== "https:" &&
       window.location.hostname !== "localhost"
     ) {
-      setCameraError("Camera API yêu cầu HTTPS hoặc localhost để hoạt động.");
+      setCameraState({
+        message: "Camera API yêu cầu HTTPS hoặc localhost để hoạt động.",
+      });
       return false;
     }
 
@@ -96,9 +102,9 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
         });
         tempStream.getTracks().forEach((track) => track.stop());
       } catch (permissionError) {
-        setCameraError(
-          "Không có quyền truy cập camera. Vui lòng cấp quyền và làm mới trang."
-        );
+        setCameraState({
+          message: "Không có quyền truy cập camera. Vui lòng cấp quyền và làm mới trang.",
+        });
         return;
       }
 
@@ -111,9 +117,9 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
         }));
 
       if (videoDevices.length === 0) {
-        setCameraError(
-          "Không tìm thấy camera nào. Vui lòng kiểm tra kết nối camera."
-        );
+        setCameraState({
+          message: "Không tìm thấy camera nào. Vui lòng kiểm tra kết nối camera."
+        });
         return;
       }
 
@@ -121,19 +127,21 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
       if (!selectedCamera) {
         setSelectedCamera(videoDevices[0].deviceId);
       }
-      setCameraError("");
+
+      setCameraState('disabled');
     } catch (error) {
       console.error("Error getting cameras:", error);
-      setCameraError("Lỗi khi truy cập camera: " + (error as Error).message);
+
+      setCameraState({
+        message: "Lỗi khi truy cập camera: " + (error as Error).message,
+      })
     }
   }, [checkCameraSupport, selectedCamera]);
 
   // Start camera stream
   const startStream = useCallback(async () => {
     try {
-      if (!checkCameraSupport()) return;
-
-      setCameraError("");
+      if (!checkCameraSupport() || cameraState == 'streaming') return;
 
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -151,38 +159,19 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
+      setCameraState('streaming')
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+      if (canvasRef.current) {
+        canvasRef.current.width = webcamRef.current?.video?.videoWidth || 640;
+        canvasRef.current.height = webcamRef.current?.video?.videoHeight || 480;
+      }
 
-        // Ensure video loads completely before playing
-        videoRef.current.onloadedmetadata = () => {
-          if (videoRef.current) {
-            videoRef.current
-              .play()
-              .then(() => {
-                // Wait a bit for video to stabilize
-                setTimeout(() => {
-                  setIsStreaming(true);
-                  if (canvasRef.current && videoRef.current) {
-                    canvasRef.current.width =
-                      videoRef.current.videoWidth || 640;
-                    canvasRef.current.height =
-                      videoRef.current.videoHeight || 480;
-                  }
-                }, 500);
-              })
-              .catch((playError) => {
-                console.error("Error playing video:", playError);
-                setCameraError("Không thể phát video từ camera.");
-              });
-          }
-        };
-
-        // Handle video errors
-        videoRef.current.onerror = (error) => {
+      if (webcamRef.current?.video) {
+        webcamRef.current.video.onerror = (error) => {
           console.error("Video error:", error);
-          setCameraError("Lỗi video stream");
+          setCameraState({
+            message: "Lỗi video stream"
+          });
         };
       }
     } catch (error) {
@@ -203,7 +192,9 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      setCameraError(errorMessage);
+      setCameraState({
+        message: errorMessage,
+      });
     }
   }, [checkCameraSupport, selectedCamera]);
 
@@ -213,18 +204,15 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setIsStreaming(false);
-    setCameraError("");
+
+    setCameraState('disabled');
   }, []);
 
   // Switch camera
   const switchCamera = useCallback(
     async (newCameraId: string) => {
       setSelectedCamera(newCameraId);
-      if (isStreaming) {
+      if (cameraState == 'streaming') {
         stopStream();
         // Delay to ensure old camera is released
         setTimeout(() => {
@@ -232,39 +220,41 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
         }, 500);
       }
     },
-    [isStreaming, stopStream, startStream]
+    [cameraState, stopStream, startStream]
   );
 
   // Enhanced capture function with better error handling
   const captureImage = useCallback((): string | null => {
-    console.log("CameraContext captureImage called:", {
-      hasVideo: !!videoRef.current,
-      isStreaming,
-      videoWidth: videoRef.current?.videoWidth,
-      videoHeight: videoRef.current?.videoHeight,
-      readyState: videoRef.current?.readyState,
-      currentTime: videoRef.current?.currentTime,
-      srcObject: !!videoRef.current?.srcObject,
-    });
+    const video = webcamRef.current?.video;
 
-    if (!videoRef.current || !isStreaming) {
+    // console.log("CameraContext captureImage called:", {
+    //   hasVideo: !!videoRef.current,
+    //   isStreaming,
+    //   videoWidth: videoRef.current?.videoWidth,
+    //   videoHeight: videoRef.current?.videoHeight,
+    //   readyState: videoRef.current?.readyState,
+    //   currentTime: videoRef.current?.currentTime,
+    //   srcObject: !!videoRef.current?.srcObject,
+    // });
+
+    if (!video || cameraState != 'streaming') {
       console.log("Cannot capture: no video or not streaming");
       return null;
     }
 
     // Check if video is actually playing
-    if (videoRef.current.paused || videoRef.current.ended) {
+    if (video.paused || video.ended) {
       console.log("Video is paused or ended");
       return null;
     }
 
     // Additional checks
-    if (videoRef.current.readyState < 2) {
-      console.log("Video not ready, readyState:", videoRef.current.readyState);
+    if (video.readyState < 2) {
+      console.log("Video not ready, readyState:", video.readyState);
       return null;
     }
 
-    if (!videoRef.current.videoWidth || !videoRef.current.videoHeight) {
+    if (!video.videoWidth || !video.videoHeight) {
       console.log("Video dimensions not available");
       return null;
     }
@@ -272,8 +262,8 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
     try {
       // Create temporary canvas for capture
       const canvas = document.createElement("canvas");
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
 
       const ctx = canvas.getContext("2d");
       if (!ctx) {
@@ -282,7 +272,7 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Draw current video frame
-      ctx.drawImage(videoRef.current, 0, 0);
+      ctx.drawImage(video, 0, 0);
       const dataURL = canvas.toDataURL("image/jpeg", 0.8);
 
       console.log("Image captured successfully:", {
@@ -296,22 +286,24 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
       console.error("Error capturing image:", error);
       return null;
     }
-  }, [isStreaming]);
+  }, [cameraState]);
 
   // Get video info for debugging
   const getVideoInfo = useCallback(() => {
+    const video = webcamRef.current?.video;
+
     return {
-      hasVideo: !!videoRef.current,
-      videoWidth: videoRef.current?.videoWidth,
-      videoHeight: videoRef.current?.videoHeight,
-      isStreaming,
-      readyState: videoRef.current?.readyState,
-      currentTime: videoRef.current?.currentTime,
-      paused: videoRef.current?.paused,
-      ended: videoRef.current?.ended,
-      srcObject: !!videoRef.current?.srcObject,
+      hasVideo: !!video,
+      videoWidth: video?.videoWidth,
+      videoHeight: video?.videoHeight,
+      cameraState,
+      readyState: video?.readyState,
+      currentTime: video?.currentTime,
+      paused: video?.paused,
+      ended: video?.ended,
+      srcObject: !!video?.srcObject,
     };
-  }, [isStreaming]);
+  }, [cameraState]);
 
   // Load cameras on mount
   useEffect(() => {
@@ -328,21 +320,20 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const contextValue: CameraContextType = {
-    videoRef,
+    // videoRef,
+    webcamRef,
     canvasRef,
     streamRef,
-    isStreaming,
+    cameraState,
     cameras,
     selectedCamera,
-    cameraError,
     modelsLoaded,
     startStream,
     stopStream,
     switchCamera,
     getCameras,
     captureImage,
-    setIsStreaming,
-    setCameraError,
+    setCameraState,
     setModelsLoaded,
     getVideoInfo,
   };

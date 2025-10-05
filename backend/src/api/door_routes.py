@@ -1,10 +1,13 @@
+import json
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import logging
 from datetime import datetime, timedelta
 import asyncio
-from src.services.door_service import door_service
+from src.services.door_service import door_service, open_door_via_websocket
+from src.api.websockets import websocket_manager
 
 logger = logging.getLogger(__name__)
 door_router = APIRouter(prefix="/door", tags=["door"])
@@ -35,7 +38,7 @@ class CommandAcknowledgment(BaseModel):
 async def register_device(registration: DeviceRegistration):
     """Register ESP8266 device"""
     try:
-        result = await door_service.register_device(
+        await door_service.register_device(
             registration.device_id,
             registration.device_type,
             registration.ip_address,

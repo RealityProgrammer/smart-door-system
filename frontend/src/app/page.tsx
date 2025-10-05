@@ -46,18 +46,18 @@ import { DoorStatus as DoorStatusComponent } from "@/components/Dashboard/DoorSt
 import { RecognitionStatus as RecognitionStatusComponent } from "@/components/Dashboard/RecognotionStatus";
 import { SystemInfo as SystemInfoComponent } from "@/components/Dashboard/SystemInfo";
 import { VoiceInterface } from "@/components/VoiceChat/VoiceInterface";
-import { CameraProvider, useCamera } from "@/contexts/CameraContext";
+import { CameraProvider, useCamera, CameraError, CameraState } from "@/contexts/CameraContext";
+import Webcam from "react-webcam";
 
 // Main component wrapped with camera context
 function SmartDoorSystemContent(): JSX.Element | null {
   // Use shared camera context
   const {
-    videoRef,
+    webcamRef,
     canvasRef,
-    isStreaming,
+    cameraState,
     cameras,
     selectedCamera,
-    cameraError,
     modelsLoaded,
     startStream,
     stopStream,
@@ -87,7 +87,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
   const autoRecognitionRef = useRef(autoRecognition);
   const recognitionStatusRef = useRef(recognitionStatus);
   const detectedFacesRef = useRef(detectedFaces);
-  const isStreamingRef = useRef(isStreaming);
+  const cameraStateRef = useRef(cameraState);
   const modelsLoadedRef = useRef(modelsLoaded);
   const isRecognitionInFlightRef = useRef(false);
 
@@ -117,7 +117,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
   useEffect(() => { autoRecognitionRef.current = autoRecognition; }, [autoRecognition]);
   useEffect(() => { recognitionStatusRef.current = recognitionStatus; }, [recognitionStatus]);
   useEffect(() => { detectedFacesRef.current = detectedFaces; }, [detectedFaces]);
-  useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
+  useEffect(() => { cameraStateRef.current = cameraState; }, [cameraState]);
   useEffect(() => { modelsLoadedRef.current = modelsLoaded; }, [modelsLoaded]);
 
   // Load face-api.js models
@@ -154,39 +154,38 @@ function SmartDoorSystemContent(): JSX.Element | null {
       modelsLoaded &&
       cameras.length > 0 &&
       autoStartCamera &&
-      !isStreaming
+      cameraState != 'streaming'
     ) {
       startStream();
     }
-  }, [isClient, modelsLoaded, cameras.length, autoStartCamera, isStreaming, startStream]);
+  }, [isClient, modelsLoaded, cameras.length, autoStartCamera, cameraState, startStream]);
 
   // Face detection function
   const detectFaces = useCallback(async () => {
     if (
-      !videoRef.current ||
+      !webcamRef.current ||
+      !webcamRef.current.video ||
       !canvasRef.current ||
       !modelsLoaded ||
-      !isStreaming ||
-      !videoRef.current.videoWidth ||
-      !videoRef.current.videoHeight
+      cameraState != 'streaming'
     )
       return;
 
     try {
       // Đảm bảo video đã load metadata
-      if (videoRef.current.readyState < 2) {
+      if (webcamRef.current.video.readyState < 2) {
         return; // Video chưa sẵn sàng
       }
 
       const detections = await faceapi
-        .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+        .detectAllFaces(webcamRef.current.video, new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks()
         .withFaceDescriptors();
 
       const canvas = canvasRef.current;
       const displaySize = {
-        width: videoRef.current.videoWidth || 640,
-        height: videoRef.current.videoHeight || 480,
+        width: webcamRef.current.video.videoWidth,
+        height: webcamRef.current.video.videoHeight,
       };
 
       faceapi.matchDimensions(canvas, displaySize);
@@ -223,11 +222,11 @@ function SmartDoorSystemContent(): JSX.Element | null {
     } catch (error) {
       console.error("Error detecting faces:", error);
     }
-  }, [modelsLoaded, isStreaming, videoRef, canvasRef]);
+  }, [modelsLoaded, cameraState, webcamRef, canvasRef]);
 
   // Start face detection interval
   useEffect(() => {
-    if (isStreaming && modelsLoaded) {
+    if (cameraState && modelsLoaded) {
       detectionIntervalRef.current = setInterval(detectFaces, 300);
     } else if (detectionIntervalRef.current) {
       clearInterval(detectionIntervalRef.current);
@@ -239,14 +238,14 @@ function SmartDoorSystemContent(): JSX.Element | null {
         clearInterval(detectionIntervalRef.current);
       }
     };
-  }, [isStreaming, modelsLoaded, detectFaces]);
+  }, [cameraState, modelsLoaded, detectFaces]);
 
   // Auto recognition logic
   const performAutoRecognition = async () => {
     const currentAuto = autoRecognitionRef.current;
     const currentStatus = recognitionStatusRef.current;
     const facesCount = detectedFacesRef.current.length;
-    const nowStreaming = isStreamingRef.current;
+    const nowStreaming = cameraStateRef.current == 'streaming';
 
     console.log("🔍 Auto Recognition Check:", {
       isStreaming: nowStreaming,
@@ -428,7 +427,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
 
   // Auto recognition interval
   useEffect(() => {
-    if (autoRecognition.isActive && isStreaming && modelsLoaded) {
+    if (autoRecognition.isActive && cameraState == 'streaming' && modelsLoaded) {
       console.log("✅ Setting up auto recognition interval");
       // Use a tighter control loop that respects in-flight guard
       const intervalId = setInterval(() => {
@@ -451,7 +450,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
         autoRecognitionIntervalRef.current = null;
       }
     };
-  }, [autoRecognition.isActive, isStreaming, modelsLoaded]);
+  }, [autoRecognition.isActive, cameraState, modelsLoaded]);
 
   // Multi-variation capture logic
   const startMultiVariationCapture = (personName: string) => {
@@ -631,11 +630,11 @@ function SmartDoorSystemContent(): JSX.Element | null {
         </header>
 
         {/* Error Alert */}
-        {cameraError && (
+        {(cameraState instanceof CameraError) && (
           <Alert className="mb-6 border-red-200 bg-red-50">
             <AlertCircle className="h-4 w-4 text-red-600" />
             <AlertDescription className="text-red-700">
-              {cameraError}
+              {cameraState.message}
             </AlertDescription>
           </Alert>
         )}
@@ -677,7 +676,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
                 <div className="flex gap-2">
                   <Button
                     onClick={captureNextVariation}
-                    disabled={!isStreaming || detectedFaces.length === 0}
+                    disabled={cameraState != 'streaming' || detectedFaces.length === 0}
                     className="flex-1"
                   >
                     {currentVariationIndex >= VARIATION_TYPES.length
@@ -774,11 +773,11 @@ function SmartDoorSystemContent(): JSX.Element | null {
                         </Select>
 
                         <Button
-                          onClick={isStreaming ? stopStream : startStream}
-                          variant={isStreaming ? "destructive" : "default"}
-                          disabled={cameras.length === 0 && !cameraError}
+                          onClick={cameraState == 'streaming' ? stopStream : startStream}
+                          variant={cameraState == 'streaming' ? "destructive" : "default"}
+                          disabled={cameras.length === 0 && !(cameraState instanceof CameraError)}
                         >
-                          {isStreaming ? (
+                          {cameraState == 'streaming' ? (
                             <>
                               <Pause className="h-4 w-4 mr-2" />
                               Dừng
@@ -817,25 +816,31 @@ function SmartDoorSystemContent(): JSX.Element | null {
 
                       {/* Video Display với Face Detection Overlay */}
                       <div className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden">
-                        <video
-                          ref={videoRef}
-                          className="w-full h-full object-cover"
-                          playsInline
-                          muted
-                          style={{ transform: "scaleX(-1)" }}
-                        />
-                        <canvas
-                          ref={canvasRef}
-                          className="absolute inset-0 w-full h-full"
-                          style={{ transform: "scaleX(-1)" }}
-                        />
+                        { cameraState == 'streaming' && (
+                          <div className="w-full h-full">
+                            <Webcam
+                              ref={webcamRef}
+                              audio={false}
+                              width={1920}
+                              height={1080}
+                              videoConstraints={{ deviceId: selectedCamera }}
+                              className="w-full h-full"
+                              style={{ transform: "scaleX(-1)" }}/>
 
-                        {!isStreaming && (
+                            <canvas
+                              ref={canvasRef}
+                              className="absolute inset-0 w-full h-full"
+                              style={{ transform: "scaleX(-1)" }}
+                            />
+                          </div>
+                        ) }
+
+                        {cameraState != 'streaming' && (
                           <div className="absolute inset-0 flex items-center justify-center text-white">
                             <div className="text-center">
                               <Camera className="h-12 w-12 mx-auto mb-2 opacity-50" />
                               <p>
-                                {cameras.length === 0 && !cameraError
+                                {cameras.length === 0 && !(cameraState instanceof CameraError)
                                   ? "Đang tải camera..."
                                   : "Camera chưa được bật"}
                               </p>
@@ -857,7 +862,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
                         )}
 
                         {/* Face Detection Status */}
-                        {isStreaming && (
+                        {cameraState == 'streaming' && (
                           <div className="absolute top-4 left-4">
                             <Badge
                               variant={
@@ -876,19 +881,13 @@ function SmartDoorSystemContent(): JSX.Element | null {
                       <div className="flex gap-2 flex-wrap">
                         <Button
                           onClick={() => {
-                            console.log("🎯 Auto Recognition Button Clicked:", {
-                              currentState: autoRecognition.isActive,
-                              isStreaming,
-                              modelsLoaded,
-                            });
-
                             if (autoRecognition.isActive) {
                               stopAutoRecognition();
                             } else {
                               startAutoRecognition();
                             }
                           }}
-                          disabled={!isStreaming || modelsLoaded === false}
+                          disabled={cameraState != 'streaming' || modelsLoaded === false}
                           variant={
                             autoRecognition.isActive ? "destructive" : "default"
                           }
@@ -909,7 +908,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
                         {/* Nút Nhận diện lại */}
                         <Button
                           onClick={startAutoRecognition}
-                          disabled={!isStreaming || autoRecognition.isActive}
+                          disabled={cameraState != 'streaming' || autoRecognition.isActive}
                           variant="outline"
                           className="flex-1 min-w-0"
                         >
@@ -923,7 +922,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
                       </div>
 
                       {/* Auto Recognition Info */}
-                      {isStreaming && (
+                      {cameraState == 'streaming' && (
                         <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded">
                           <div className="grid grid-cols-2 gap-2">
                             <div>

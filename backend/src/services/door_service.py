@@ -1,9 +1,11 @@
+import json
 import os
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from supabase import create_client, Client
 import asyncio
+from src.api.websockets import websocket_manager
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,9 @@ class DoorService:
     async def send_door_command(self, device_id: str, command: str, recognized_name: Optional[str] = None):
         """Send command to specific device"""
         try:
+            if command == "open_door":
+                await open_door_via_websocket(device_id)
+
             command_data = {
                 "device_id": device_id,
                 "command": command,
@@ -158,3 +163,20 @@ class DoorService:
 
 # Global instance
 door_service = DoorService()
+
+@websocket_manager.on('message')
+async def on_message(message: str):
+    data = json.loads(message)
+
+    if data['type'] == 'device_register':
+        await door_service.register_device(data['device_id'], data['device_type'], data['ip_address'], data['status'])
+
+    if data['type'] == 'update_door_status':
+        await door_service.update_door_status(data['device_id'], data['door_status'], data['timestamp'])
+
+async def open_door_via_websocket(device_id: str):
+    await websocket_manager.send_message(json.dumps({
+        'type': 'door_command',
+        'device_id': device_id,
+        'command': "open_door",
+    }))

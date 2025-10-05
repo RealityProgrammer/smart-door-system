@@ -38,12 +38,6 @@ export function FaceList({ onDeleteSuccess }: FaceListProps) {
 
     setOpenFaceVariationModal(true);
     setFaceVariants(variations);
-
-    // alert(
-    //   `Variations cho ${name}:\n${variations
-    //     .map((v) => `- ${v.type} (${v.added_date})`)
-    //     .join("\n")}`
-    // );
   };
 
   return (
