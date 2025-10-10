@@ -78,7 +78,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
   const [autoRecognition, setAutoRecognition] = useState<AutoRecognitionState>({
     isActive: false,
     attemptCount: 0,
-    maxAttempts: 10,
+    maxAttempts: 5,
     cooldownUntil: null,
     lastAttempt: 0,
   });
@@ -147,45 +147,33 @@ function SmartDoorSystemContent(): JSX.Element | null {
     setIsClient(true);
   }, []);
 
-  // Auto-start camera when models loaded and cameras available
-  useEffect(() => {
-    if (
-      isClient &&
-      modelsLoaded &&
-      cameras.length > 0 &&
-      autoStartCamera &&
-      cameraState != 'streaming'
-    ) {
-      startStream();
-    }
-  }, [isClient, modelsLoaded, cameras.length, autoStartCamera, cameraState, startStream]);
-
   // Face detection function
   const detectFaces = useCallback(async () => {
-    if (
-      !webcamRef.current ||
-      !webcamRef.current.video ||
-      !canvasRef.current ||
-      !modelsLoaded ||
-      cameraState != 'streaming'
-    )
-      return;
+    if (!modelsLoaded || cameraState != 'streaming') return;
+
+    const webcam = webcamRef.current;
+
+    if (!webcam || !canvasRef.current) return;
+
+    const webcamVideo = webcam.video;
+
+    if (!webcamVideo) return;
 
     try {
       // Đảm bảo video đã load metadata
-      if (webcamRef.current.video.readyState < 2) {
+      if (webcamVideo.readyState < 2) {
         return; // Video chưa sẵn sàng
       }
 
       const detections = await faceapi
-        .detectAllFaces(webcamRef.current.video, new faceapi.TinyFaceDetectorOptions())
+        .detectAllFaces(webcamVideo, new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks()
         .withFaceDescriptors();
 
       const canvas = canvasRef.current;
       const displaySize = {
-        width: webcamRef.current.video.videoWidth,
-        height: webcamRef.current.video.videoHeight,
+        width: webcamVideo.videoWidth,
+        height: webcamVideo.videoHeight,
       };
 
       faceapi.matchDimensions(canvas, displaySize);
@@ -367,6 +355,11 @@ function SmartDoorSystemContent(): JSX.Element | null {
           // Hiển thị cảnh báo nhẹ chỉ khi hết attempts
           const latestAuto = autoRecognitionRef.current;
           if (latestAuto.attemptCount >= latestAuto.maxAttempts - 1) {
+            // Capture the image of suspicious face.
+            // TODO: Redesign the system to prevent hardcoding the door id.
+
+            await apiService.reportSuspicious("smart_door_002", imageBase64, new Date().toISOString());
+
             const notification = document.createElement("div");
             notification.className =
               "fixed top-4 right-4 bg-yellow-500 text-white p-4 rounded-lg shadow-lg z-50";
@@ -815,15 +808,15 @@ function SmartDoorSystemContent(): JSX.Element | null {
                       </div>
 
                       {/* Video Display với Face Detection Overlay */}
-                      <div className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden">
+                      <div className="relative aspect-video bg-gray-900 rounded-lg">
                         { cameraState == 'streaming' && (
-                          <div className="w-full h-full">
+                          <div className="w-full h-full overflow-hidden">
                             <Webcam
                               ref={webcamRef}
                               audio={false}
-                              width={1920}
-                              height={1080}
-                              videoConstraints={{ deviceId: selectedCamera }}
+                              width={1080}
+                              height={720}
+                              videoConstraints={{ deviceId: { exact: selectedCamera } }}
                               className="w-full h-full"
                               style={{ transform: "scaleX(-1)" }}/>
 
@@ -998,7 +991,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
                         </li>
                         <li>
                           • <strong>Nhận diện tự động:</strong> Hoạt động 24/7
-                          với limit 10 lần/30s
+                          với limit 5 lần/30s
                         </li>
                       </ul>
                     </div>

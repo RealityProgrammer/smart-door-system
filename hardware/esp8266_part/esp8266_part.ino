@@ -118,6 +118,8 @@ void loop() {
       Serial.readBytes((char*)&status, 1);
 
       digitalWrite(DOOR_LED_PIN, status ? HIGH : LOW);
+    } else if (memcmp(cmdid, "atck", 4) == 0) {
+      sendAttackStatus();
     }
   }
 
@@ -163,7 +165,6 @@ void onWebsocketEvent(WStype_t type, uint8_t* data, size_t len) {
 
         if (memcmp(payloadDeviceId, deviceId.c_str(), deviceId.length()) == 0) {
           if (memcmp(command, "open_door", 9) == 0) {
-            // Serial.println("Open via Websocket.");
             openDoor();
           }
         }
@@ -179,6 +180,18 @@ void updateDoorStatus(const char* status) {
   doc["type"] = "update_door_status";
   doc["device_id"] = deviceId;
   doc["door_status"] = status;
+  doc["timestamp"] = millis();
+  
+  String payload;
+  serializeJson(doc, payload);
+
+  wsClient.sendTXT(payload);
+}
+
+void sendAttackStatus() {
+  JsonDocument doc;
+  doc["type"] = "door_attacked";
+  doc["device_id"] = deviceId;
   doc["timestamp"] = millis();
   
   String payload;

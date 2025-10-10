@@ -19,7 +19,8 @@ class SupabaseService:
             raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables")
         
         self.client: Client = create_client(self.supabase_url, self.supabase_key)
-        self.bucket_name = "faces"
+        self.faces_bucket_name = "faces"
+        self.suspicious_bucket_name = "suspicious"
         
         logger.info("Supabase service initialized")
     
@@ -37,7 +38,7 @@ class SupabaseService:
             image_bytes = base64.b64decode(image_base64)
             
             # Upload to Supabase Storage
-            result = self.client.storage.from_(self.bucket_name).upload(
+            result = self.client.storage.from_(self.faces_bucket_name).upload(
                 path=file_name,
                 file=image_bytes,
                 file_options={
@@ -48,7 +49,7 @@ class SupabaseService:
             logger.info(f"Supabase upload response: {result}")  # Log ra file log
             if result:
                 # Get public URL
-                public_url = self.client.storage.from_(self.bucket_name).get_public_url(file_name)
+                public_url = self.client.storage.from_(self.faces_bucket_name).get_public_url(file_name)
                 logger.info(f"Image uploaded successfully: {file_name}")
                 return public_url
             else:
@@ -62,7 +63,7 @@ class SupabaseService:
     def delete_image(self, file_name: str) -> bool:
         """Delete image from Supabase Storage"""
         try:
-            result = self.client.storage.from_(self.bucket_name).remove([file_name])
+            result = self.client.storage.from_(self.faces_bucket_name).remove([file_name])
             
             if result:
                 logger.info(f"Image deleted successfully: {file_name}")
@@ -77,16 +78,56 @@ class SupabaseService:
     
     def get_public_url(self, file_name: str) -> str:
         """Get public URL for a file"""
-        return self.client.storage.from_(self.bucket_name).get_public_url(file_name)
+        return self.client.storage.from_(self.faces_bucket_name).get_public_url(file_name)
     
     def list_images(self, path: str = "") -> list:
         """List all images in bucket"""
         try:
-            result = self.client.storage.from_(self.bucket_name).list(path)
+            result = self.client.storage.from_(self.faces_bucket_name).list(path)
             return result
         except Exception as e:
             logger.error(f"Error listing images: {e}")
             return []
+
+    def upload_suspicious_image(self, image_base64: str, timestamp: datetime) -> Optional[str]:
+        """
+        Upload image of suspicious to Supabase Storage
+        Returns public URL if successful, None if failed
+        """
+        try:
+            # Remove data URL prefix if present
+            if image_base64.startswith('data:image'):
+                image_base64 = image_base64.split(',')[1]
+
+            file_name = timestamp.strftime("%Y%m%d_%H%M%S")
+
+            # Decode base64 to bytes
+            image_bytes = base64.b64decode(image_base64)
+
+            # Upload to Supabase Storage
+            result = self.client.storage.from_(self.suspicious_bucket_name).upload(
+                path=file_name,
+                file=image_bytes,
+                file_options={
+                    "content-type": "image/jpeg",
+                    "cache-control": "3600"
+                }
+            )
+
+            logger.info(f"Supabase upload response: {result}")  # Log ra file log
+            if result:
+                # Get public URL
+                public_url = self.client.storage.from_(self.suspicious_bucket_name).get_public_url(file_name)
+                logger.info(f"Image uploaded successfully: {file_name}")
+                return public_url
+            else:
+                logger.error(f"Failed to upload image: {result}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error uploading image to Supabase: {e}")
+            return None
+
 
 # Create global instance
 supabase_service = SupabaseService()

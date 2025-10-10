@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from supabase import create_client, Client
 import asyncio
 from src.api.websockets import websocket_manager
+from src.services.supabase_service import supabase_service
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,24 @@ class DoorService:
         except Exception as e:
             logger.error(f"Error updating status for {device_id}: {e}")
             raise
+
+    async def register_door_status(self, device_id: str, door_status: str, timestamp: int):
+        """Register device door status"""
+        try:
+            status_data = {
+                "device_id": device_id,
+                "door_status": door_status,
+                "device_timestamp": timestamp,
+                "server_timestamp": datetime.now().isoformat()
+            }
+
+            # Insert status log
+            result = self.client.table("door_status_log").insert(status_data).execute()
+
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error(f"Error registering status for {device_id}: {e}")
+            raise
     
     async def get_all_devices(self):
         """Get all registered devices"""
@@ -161,6 +180,11 @@ class DoorService:
             logger.error(f"Error getting device status for {device_id}: {e}")
             raise
 
+    async def report_suspicious(self, device_id: str, image: str, timestamp: datetime) -> str|None:
+        await self.register_door_status(device_id, 'suspicious', int(timestamp.timestamp()))
+
+        return supabase_service.upload_suspicious_image(image, timestamp)
+
 # Global instance
 door_service = DoorService()
 
@@ -173,6 +197,9 @@ async def on_message(message: str):
 
     if data['type'] == 'update_door_status':
         await door_service.update_door_status(data['device_id'], data['door_status'], data['timestamp'])
+
+    if data['type'] == 'door_attacked':
+        await door_service.register_door_status(data['device_id'], 'attacked', data['timestamp'])
 
 async def open_door_via_websocket(device_id: str):
     await websocket_manager.send_message(json.dumps({

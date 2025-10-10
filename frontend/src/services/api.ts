@@ -68,6 +68,17 @@ class ApiService {
         });
     }
 
+    async reportSuspicious(doorId: string, image: string, timestamp: string): Promise<ApiResponse<any>> {
+        return this.makeRequest<ApiResponse<any>>(`/door/report`, {
+            method: 'POST',
+            body: JSON.stringify({
+                device_id: doorId,
+                image: image,
+                timestamp: timestamp,
+            })
+        });
+    }
+
     async healthCheck(): Promise<ApiResponse<any>> {
         return this.makeRequest<ApiResponse<any>>('/health');
     }

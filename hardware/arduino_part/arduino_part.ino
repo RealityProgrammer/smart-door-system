@@ -6,6 +6,7 @@
 #define VIBRATION_DEBUG_LED_PIN 11
 
 #define BUZZER_DURATION 250
+#define ATTACK_STATUS_COOLDOWN 5000
 
 Servo servo;
 
@@ -16,6 +17,8 @@ bool buzzerEnabled;
 uint64_t buzzerDisableTime;
 
 int servoAngle = 0;
+
+uint64_t attackReportCooldown;
 
 void setup() {
   // put your setup code here, to run once:
@@ -122,5 +125,10 @@ void loop() {
 
   if (!servoOpen && digitalRead(VIBRATION_PIN) == 1) {
     toneAC2(9, 10, 3000, 3000);
+
+    if (millis() >= attackReportCooldown) {
+      Serial.print("atck");
+      attackReportCooldown = millis() + ATTACK_STATUS_COOLDOWN;
+    }
   }
 }

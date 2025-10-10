@@ -12,6 +12,11 @@ from src.api.websockets import websocket_manager
 logger = logging.getLogger(__name__)
 door_router = APIRouter(prefix="/door", tags=["door"])
 
+class ReportSuspiciousRequest(BaseModel):
+    device_id: str
+    image: str
+    timestamp: str
+
 class DeviceRegistration(BaseModel):
     device_id: str
     device_type: str
@@ -135,6 +140,22 @@ async def open_door_command(device_id: str, recognized_name: Optional[str] = Non
         
     except Exception as e:
         logger.error(f"Open door error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@door_router.post("/report")
+async def report_suspicious(request: ReportSuspiciousRequest):
+    try:
+        image_url = await door_service.report_suspicious(request.device_id, request.image, datetime.fromisoformat(request.timestamp))
+
+        if not image_url:
+            raise ValueError("Failed to upload image to cloud storage")
+
+        return {
+            "success": True,
+            "message": "Suspicious image recorded",
+            "device_id": request.device_id,
+        }
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @door_router.get("/devices")
