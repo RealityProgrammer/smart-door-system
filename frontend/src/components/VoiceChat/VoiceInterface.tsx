@@ -538,6 +538,7 @@ export function VoiceInterface({
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{cameraError}</AlertDescription>
+
               </Alert>
             )}
 
@@ -901,7 +902,7 @@ export function VoiceInterface({
 
       {/* Enhanced Instructions */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <div className="text-sm text-gray-600 space-y-2">
             <h4 className="font-medium">🎯 Hướng dẫn sử dụng nâng cao:</h4>
             <ul className="text-xs space-y-1">
