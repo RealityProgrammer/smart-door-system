@@ -48,6 +48,8 @@ import { SystemInfo as SystemInfoComponent } from "@/components/Dashboard/System
 import { VoiceInterface } from "@/components/VoiceChat/VoiceInterface";
 import { CameraProvider, useCamera, CameraError, CameraState } from "@/contexts/CameraContext";
 import Webcam from "react-webcam";
+import { DoorStatusLog } from "@/components/Logging/DoorStatusLog";
+import { SuspiciousLog } from "@/components/Logging/SuspiciousLog";
 
 // Main component wrapped with camera context
 function SmartDoorSystemContent(): JSX.Element | null {
@@ -696,7 +698,7 @@ function SmartDoorSystemContent(): JSX.Element | null {
 
         {/* Main Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="camera" className="flex items-center gap-2">
               <Camera className="h-4 w-4" />
               Camera & Nhận diện
@@ -712,6 +714,10 @@ function SmartDoorSystemContent(): JSX.Element | null {
             <TabsTrigger value="dashboard" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
               Dashboard
+            </TabsTrigger>
+            <TabsTrigger value="logging" className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              Nhật ký
             </TabsTrigger>
           </TabsList>
 
@@ -1056,6 +1062,14 @@ function SmartDoorSystemContent(): JSX.Element | null {
                   </div>
                 </CardContent>
               </Card>
+            </div>
+          </TabsContent>
+
+          {/* Loggin Tab */}
+          <TabsContent value="logging" className="mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <DoorStatusLog/>
+              <SuspiciousLog/>
             </div>
           </TabsContent>
         </Tabs>

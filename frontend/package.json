@@ -22,6 +22,7 @@
     "next": "^15.5.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-paginate": "^8.3.0",
     "react-webcam": "^7.2.0",
     "swiper": "^11.2.10",
     "tailwind-merge": "^3.3.1"

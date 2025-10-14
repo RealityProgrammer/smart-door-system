@@ -1,4 +1,11 @@
-import {FaceRecognitionResult, FaceInfo, ApiResponse, AddFaceRequest, FaceVariationResponse} from '@/types';
+import {
+    FaceRecognitionResult,
+    FaceInfo,
+    ApiResponse,
+    AddFaceRequest,
+    FaceVariationResponse,
+    SuspiciousInfo, DeviceLog
+} from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
@@ -81,6 +88,18 @@ class ApiService {
 
     async healthCheck(): Promise<ApiResponse<any>> {
         return this.makeRequest<ApiResponse<any>>('/health');
+    }
+
+    async getDeviceLogs() : Promise<ApiResponse<DeviceLog[]>> {
+        return this.makeRequest<ApiResponse<DeviceLog[]>>("/door/status", {
+            method: 'GET',
+        })
+    }
+    
+    async getSuspiciousList(): Promise<ApiResponse<SuspiciousInfo[]>> {
+        return this.makeRequest<ApiResponse<SuspiciousInfo[]>>('/door/suspicious', {
+            method: 'GET',
+        });
     }
 }
 

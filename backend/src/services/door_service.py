@@ -170,7 +170,7 @@ class DoorService:
     async def get_device_status(self, device_id: str):
         """Get device current status"""
         try:
-            result = self.client.table("door_devices").select("*").eq(
+            result = self.client.table("door_status_log").select("*").eq(
                 "device_id", device_id
             ).single().execute()
             
@@ -180,10 +180,38 @@ class DoorService:
             logger.error(f"Error getting device status for {device_id}: {e}")
             raise
 
-    async def report_suspicious(self, device_id: str, image: str, timestamp: datetime) -> str|None:
+    async def record_suspicious(self, device_id: str, image: str, timestamp: datetime) -> dict | None:
         await self.register_door_status(device_id, 'suspicious', int(timestamp.timestamp()))
 
-        return supabase_service.upload_suspicious_image(image, timestamp)
+        image_url = supabase_service.upload_suspicious_image(image, timestamp)
+
+        if image_url is None:
+            return None
+
+        result = self.client.table("suspicious").insert({
+            'device_id': device_id,
+            'image_url': image_url
+        }).execute()
+
+        return result.data[0] if result.data else None
+
+    async def get_all_suspicious(self):
+        """Get all row of suspicious"""
+        try:
+            result = self.client.table("suspicious").select("*").execute()
+            return result.data
+        except Exception as e:
+            logger.error(f"Error getting suspicious data: {e}")
+            raise
+
+    async def get_all_status_logs(self):
+        """Get all status logs"""
+        try:
+            result = self.client.table("door_status_log").select("*").execute()
+            return result.data
+        except Exception as e:
+            logger.error(f"Error getting log data: {e}")
+            raise
 
 # Global instance
 door_service = DoorService()

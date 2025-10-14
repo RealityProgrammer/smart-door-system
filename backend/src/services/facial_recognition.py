@@ -16,6 +16,7 @@ import tensorflow as tf
 from src.utils.image_utils import decode_base64_image, encode_image_to_base64
 from src.config.deepface_config import DEFAULT_CONFIG, REALTIME_CONFIG, ENROLLMENT_CONFIG
 from src.services.supabase_service import supabase_service
+from src.services.door_service import door_service
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,8 @@ class DeepFacialRecognitionService:
         
         # Initialize models (warm up)
         self._initialize_models()
+
+        self.suspicious_faces = []
     
     def _initialize_models(self):
         """Initialize DeepFace models to reduce first-time loading delay"""
@@ -924,7 +927,7 @@ class DeepFacialRecognitionService:
         except Exception as e:
             logger.error(f"Error deleting variation: {e}")
             return False
-    
+
     def _update_faces_info_after_variation_delete(self, name: str, variation_type: str):
         """Update faces_info.json after deleting a variation"""
         try:
