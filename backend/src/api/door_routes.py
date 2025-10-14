@@ -12,6 +12,11 @@ from src.api.websockets import websocket_manager
 logger = logging.getLogger(__name__)
 door_router = APIRouter(prefix="/door", tags=["door"])
 
+class ReportSuspiciousRequest(BaseModel):
+    device_id: str
+    image: str
+    timestamp: str
+
 class DeviceRegistration(BaseModel):
     device_id: str
     device_type: str
@@ -137,6 +142,22 @@ async def open_door_command(device_id: str, recognized_name: Optional[str] = Non
         logger.error(f"Open door error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@door_router.post("/report")
+async def report_suspicious(request: ReportSuspiciousRequest):
+    try:
+        row = await door_service.record_suspicious(request.device_id, request.image, datetime.fromisoformat(request.timestamp))
+
+        if not row:
+            raise ValueError("Failed to record suspicious entry")
+
+        return {
+            "success": True,
+            "message": "Suspicious image recorded",
+            "device_id": request.device_id,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @door_router.get("/devices")
 async def get_registered_devices():
     """Get all registered devices"""
@@ -165,4 +186,22 @@ async def get_device_status(device_id: str):
         
     except Exception as e:
         logger.error(f"Get device status error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@door_router.get("/status")
+async def get_all_suspicious():
+    """Get all status logs"""
+    try:
+        return await door_service.get_all_status_logs()
+    except Exception as e:
+        logger.error(f"Get status logs error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@door_router.get("/suspicious")
+async def get_all_suspicious():
+    """Get all registered devices"""
+    try:
+        return await door_service.get_all_suspicious()
+    except Exception as e:
+        logger.error(f"Get suspicious error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

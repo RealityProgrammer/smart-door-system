@@ -101,3 +101,18 @@ export interface AutoRecognitionState {
     cooldownUntil: number | null;
     lastAttempt: number;
 }
+
+export interface DeviceLog {
+    id: number;
+    device_id: string;
+    door_status: string;
+    device_timestamp: number;
+    server_timestamp: string;
+}
+
+export interface SuspiciousInfo {
+    id: number;
+    image_url: string;
+    device_id: string;
+    created_at: Date;
+}

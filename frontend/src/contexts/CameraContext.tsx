@@ -126,6 +126,7 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
       setCameras(videoDevices);
       if (!selectedCamera) {
         setSelectedCamera(videoDevices[0].deviceId);
+        console.log("Set to camera " + videoDevices[0].deviceId);
       }
 
       setCameraState('disabled');
@@ -147,7 +148,7 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
 
-      const constraints = {
+      const constraints: MediaStreamConstraints = {
         video: {
           deviceId: selectedCamera ? { exact: selectedCamera } : undefined,
           width: { ideal: 1280, max: 1920 },
@@ -159,7 +160,7 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
-      setCameraState('streaming')
+      setCameraState('streaming');
 
       if (canvasRef.current) {
         canvasRef.current.width = webcamRef.current?.video?.videoWidth || 640;
@@ -212,11 +213,13 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
   const switchCamera = useCallback(
     async (newCameraId: string) => {
       setSelectedCamera(newCameraId);
+
       if (cameraState == 'streaming') {
         stopStream();
         // Delay to ensure old camera is released
         setTimeout(() => {
           startStream();
+          console.log('Start streaming via switch camera')
         }, 500);
       }
     },
