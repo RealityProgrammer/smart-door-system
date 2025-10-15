@@ -355,8 +355,9 @@ function SmartDoorSystemContent(): JSX.Element | null {
           setRecognitionStatus("unknown");
 
           // Hiển thị cảnh báo nhẹ chỉ khi hết attempts
+          // TODO: Fix suspicious image captured twice.
           const latestAuto = autoRecognitionRef.current;
-          if (latestAuto.attemptCount >= latestAuto.maxAttempts - 1) {
+          if (latestAuto.attemptCount >= latestAuto.maxAttempts) {
             // Capture the image of suspicious face.
             // TODO: Redesign the system to prevent hardcoding the door id.
 
